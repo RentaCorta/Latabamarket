@@ -153,15 +153,25 @@ export default function Dashboard() {
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Card title="Café de máquina semana a semana" action={<Toggle value={coffeeMetric} onChange={(v) => setCoffeeMetric(v as "units" | "revenue")} options={[["units", "Cantidad"], ["revenue", "Ingreso"]]} />}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={kpis.coffee_weekly.map((c) => ({ week: `Sem. ${c.week.slice(5)}`, val: Number(c[coffeeMetric]) }))}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                    <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => coffeeMetric === "revenue" ? `$${Math.round(v / 1000)}K` : num(v)} />
-                    <Tooltip formatter={(v) => coffeeMetric === "revenue" ? clp(v) : num(v)} />
-                    <Bar dataKey="val" fill={C.amber} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {(() => {
+                  const total = kpis.coffee_weekly.reduce((a, c) => a + Number(c[coffeeMetric]), 0);
+                  return (
+                    <>
+                      <p className="mb-3 text-sm text-slate-500">
+                        Total del período: <span className="font-bold text-slate-900">{coffeeMetric === "revenue" ? clp(total) : `${num(total)} cafés`}</span>
+                      </p>
+                      <ResponsiveContainer width="100%" height={270}>
+                        <BarChart data={kpis.coffee_weekly.map((c) => ({ week: `Sem. ${c.week.slice(5)}`, val: Number(c[coffeeMetric]) }))}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                          <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => coffeeMetric === "revenue" ? `$${Math.round(v / 1000)}K` : num(v)} />
+                          <Tooltip formatter={(v) => coffeeMetric === "revenue" ? clp(v) : num(v)} />
+                          <Bar dataKey="val" fill={C.amber} radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </>
+                  );
+                })()}
               </Card>
 
               <Card title="Ventas por vendedor">
@@ -207,6 +217,9 @@ export default function Dashboard() {
                   return row ? Number(row[serviceMetric]) : 0;
                 };
                 const f = serviceMetric === "revenue" ? clp : num;
+                const totC = weeks.reduce((a, w) => a + cell(w, "Completos"), 0);
+                const totCh = weeks.reduce((a, w) => a + cell(w, "Churrascos"), 0);
+                const totSa = weeks.reduce((a, w) => a + cell(w, "Sandwiches"), 0);
                 return (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -233,6 +246,15 @@ export default function Dashboard() {
                           );
                         })}
                       </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-bold">
+                          <td className="py-2">Total</td>
+                          <td className="py-2 text-right">{f(totC)}</td>
+                          <td className="py-2 text-right">{f(totCh)}</td>
+                          <td className="py-2 text-right">{f(totSa)}</td>
+                          <td className="py-2 text-right">{f(totC + totCh + totSa)}</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 );
