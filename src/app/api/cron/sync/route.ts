@@ -44,6 +44,18 @@ export async function GET(request: Request) {
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-
+// Compras nuevas (solo cabeceras)
+  const { data: lastP } = await supabase.from("purchases").select("id").order("id", { ascending: false }).limit(1).maybeSingle();
+  const maxPid = lastP?.id ?? 0;
+  const cdata = await relbaseFetch(`/compras?per_page=50&page=1`);
+  const nuevasC = (cdata?.data?.compras ?? []).filter((c: any) => c.id > maxPid);
+  if (nuevasC.length > 0) {
+    await supabase.from("purchases").upsert(nuevasC.map((c: any) => ({
+      id: c.id, provider_id: c.provider_id, provider_name: c.provider_name, provider_rut: c.provider_rut,
+      issued_date: c.start_date, type_document: c.type_document, type_document_name: c.type_document_name,
+      status: c.status, status_payment: c.status_payment,
+      amount_total: c.amount_total, amount_neto: c.amount_neto, amount_iva: c.amount_iva, amount_exempt: c.amount_exempt,
+    })));
+  }
   return NextResponse.json({ ok: true, synced: nuevas.length });
 }

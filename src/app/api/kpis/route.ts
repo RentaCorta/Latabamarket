@@ -19,7 +19,8 @@ export async function GET(request: Request) {
   const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days + 1);
 
   const args = { p_start: from, p_end: to, p_shift: shift };
-  const [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow] = await Promise.all([
+  const dateArgs = { p_start: from, p_end: to };
+  const [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow, pSummary, pProvider, pVsSales] = await Promise.all([
     supabase.rpc("kpi_summary", args),
     supabase.rpc("kpi_summary", { p_start: fmt(prevStart), p_end: fmt(prevEnd), p_shift: shift }),
     supabase.rpc("kpi_daily", args),
@@ -31,9 +32,12 @@ export async function GET(request: Request) {
     supabase.rpc("kpi_coffee_weekly", args),
     supabase.rpc("kpi_categories", args),
     supabase.rpc("kpi_slow_movers", { p_days: 15 }),
+    supabase.rpc("kpi_purchases_summary", dateArgs),
+    supabase.rpc("kpi_purchases_by_provider", dateArgs),
+    supabase.rpc("kpi_purchases_vs_sales_weekly", dateArgs),
   ]);
 
-  for (const r of [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow]) {
+  for (const r of [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow, pSummary, pProvider, pVsSales]) {
     if (r.error) return NextResponse.json({ ok: false, error: r.error.message }, { status: 500 });
   }
 
@@ -51,5 +55,8 @@ export async function GET(request: Request) {
     coffee_weekly: coffee.data,
     categories: categories.data,
     slow_movers: slow.data,
+    purchases_summary: pSummary.data?.[0] ?? null,
+    purchases_by_provider: pProvider.data,
+    purchases_vs_sales: pVsSales.data,
   });
 }

@@ -21,9 +21,9 @@ type Kpis = {
   coffee_weekly: { week: string; units: number; revenue: number }[];
   categories: { category: string; units: number; revenue: number }[];
   slow_movers: { product_id: number; name: string; category: string; last_sold: string; days_since: number }[];
-  purchases_summary: { total: number; neto: number; docs: number };
-  purchases_by_provider: { provider: string; total: number; docs: number }[];
-  buy_vs_sell_weekly: { week: string; ventas: number; compras: number }[];
+  purchases_summary: { purchased_neto: number; purchased_total: number; purchases_count: number; sales_neto: number };
+  purchases_by_provider: { provider: string; docs: number; neto: number }[];
+  purchases_vs_sales: { week: string; compras: number; ventas: number }[];
 };
 
 const clp = (n: unknown) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Number(n) || 0);
@@ -97,7 +97,7 @@ export default function Dashboard() {
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
         <h1 className="text-2xl font-bold tracking-tight">La Taba · Panel de KPIs</h1>
         <p className="mt-1 text-sm text-slate-500">
-          {range.from} a {range.to}{shift !== "all" && ` · turno ${shift === "manana" ? "mañana" : "tarde"}`}
+          {range.from} a {range.to}{shift !== "all" && tab !== "compras" && ` · turno ${shift === "manana" ? "mañana" : "tarde"}`}
         </p>
 
         {/* Pestañas */}
@@ -121,12 +121,14 @@ export default function Dashboard() {
             <span className="text-slate-400">→</span>
             <input type="date" value={range.to} onChange={(e) => applyCustom("to", e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5" />
           </div>
-          <div className="ml-auto flex gap-1.5">
-            {[["all", "Todo el día"], ["manana", "Mañana"], ["tarde", "Tarde"]].map(([k, l]) => (
-              <button key={k} onClick={() => setShift(k)}
-                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${shift === k ? "bg-indigo-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}>{l}</button>
-            ))}
-          </div>
+          {tab !== "compras" && (
+            <div className="ml-auto flex gap-1.5">
+              {[["all", "Todo el día"], ["manana", "Mañana"], ["tarde", "Tarde"]].map(([k, l]) => (
+                <button key={k} onClick={() => setShift(k)}
+                  className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${shift === k ? "bg-indigo-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}>{l}</button>
+              ))}
+            </div>
+          )}
         </div>
 
         {error && <div className="mt-6 rounded-xl bg-rose-50 p-4 text-rose-700">Error: {error}</div>}
@@ -396,20 +398,20 @@ export default function Dashboard() {
 
         {/* ===== PESTAÑA COMPRAS ===== */}
         {kpis && !loading && tab === "compras" && (() => {
-          const comprado = Number(kpis.purchases_summary?.total ?? 0);
-          const vendido = Number(kpis.summary.total);
+          const ps = kpis.purchases_summary;
+          const ratio = ps && Number(ps.sales_neto) > 0 ? (Number(ps.purchased_neto) / Number(ps.sales_neto)) * 100 : null;
           return (
             <>
-              <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-                <Kpi title="Total comprado" value={clp(comprado)} delta={null} sub="facturas de compra" />
-                <Kpi title="Total vendido" value={clp(vendido)} delta={null} sub="boletas + facturas" />
-                <Kpi title="Diferencia (vendido − comprado)" value={clp(vendido - comprado)} delta={null}
-                  sub={vendido > 0 ? `compras = ${Math.round((comprado / vendido) * 100)}% de ventas` : undefined} />
+              <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Kpi title="Total comprado (neto)" value={clp(ps?.purchased_neto)} delta={null} sub="facturas de compra" />
+                <Kpi title="Total vendido (neto)" value={clp(ps?.sales_neto)} delta={null} sub="en el período" />
+                <Kpi title="Compras / Ventas" value={ratio !== null ? `${ratio.toFixed(0)}%` : "—"} delta={null} sub="cuánto compras por venta" />
+                <Kpi title="N° de compras" value={num(ps?.purchases_count)} delta={null} sub="facturas" />
               </div>
 
-              <Card className="mt-4" title="Ventas vs Compras por semana">
+              <Card className="mt-4" title="Compras vs Ventas por semana">
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={kpis.buy_vs_sell_weekly.map((w) => ({ week: `Sem. ${w.week.slice(5)}`, Ventas: Number(w.ventas), Compras: Number(w.compras) }))}>
+                  <BarChart data={kpis.purchases_vs_sales.map((r) => ({ week: `Sem. ${r.week.slice(5)}`, Compras: Number(r.compras), Ventas: Number(r.ventas) }))}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${Math.round(v / 1000)}K`} />
@@ -422,13 +424,13 @@ export default function Dashboard() {
               </Card>
 
               <Card className="mt-4" title={`Compras por proveedor (${kpis.purchases_by_provider.length})`}>
-                <div className="max-h-[480px] overflow-y-auto">
+                <div className="max-h-[460px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
                         <th className="pb-2 pr-4 font-medium">Proveedor</th>
                         <th className="pb-2 px-4 text-right font-medium">N° docs</th>
-                        <th className="pb-2 pl-6 text-right font-medium">Monto</th>
+                        <th className="pb-2 pl-6 text-right font-medium">Monto (neto)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -436,7 +438,7 @@ export default function Dashboard() {
                         <tr key={i} className="border-t border-slate-100">
                           <td className="py-1.5 pr-4">{p.provider}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums">{num(p.docs)}</td>
-                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(p.total)}</td>
+                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(p.neto)}</td>
                         </tr>
                       ))}
                     </tbody>
