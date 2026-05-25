@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPE_BOLETA = 39;
-const MAX_PER_RUN = 5; // límite para no pasar el timeout de 10s de Vercel
+const TYPES = [39, 41];
+const MAX_PER_RUN = 5;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -15,8 +15,12 @@ export async function GET(request: Request) {
     .from("sales").select("id").order("id", { ascending: false }).limit(1).maybeSingle();
   const maxId = latest?.id ?? 0;
 
-  const data = await relbaseFetch(`/dtes?type_document=${TYPE_BOLETA}&per_page=50&page=1`);
-  const nuevas = (data?.data?.dtes ?? []).filter((d: any) => d.id > maxId).slice(0, MAX_PER_RUN);
+  let candidatas: any[] = [];
+  for (const type of TYPES) {
+    const data = await relbaseFetch(`/dtes?type_document=${type}&per_page=50&page=1`);
+    candidatas = candidatas.concat((data?.data?.dtes ?? []).filter((d: any) => d.id > maxId));
+  }
+  const nuevas = candidatas.sort((a, b) => a.id - b.id).slice(0, MAX_PER_RUN);
 
   for (const d of nuevas) {
     await supabase.from("sales").upsert({
@@ -24,7 +28,8 @@ export async function GET(request: Request) {
       type_document_name: d.type_document_name, status: d.status, sii_status: d.sii_status,
       issued_date: d.start_date, sold_at: d.created_at,
       amount_total: d.amount_total, amount_neto: d.amount_neto,
-      amount_iva: d.amount_iva, amount_exempt: d.amount_exempt, branch_id: d.branch_id,seller_id: d.seller_id,
+      amount_iva: d.amount_iva, amount_exempt: d.amount_exempt,
+      branch_id: d.branch_id, seller_id: d.seller_id,
       items_synced: true,
     });
 
