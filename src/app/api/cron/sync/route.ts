@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       type_document_name: d.type_document_name, status: d.status, sii_status: d.sii_status,
       issued_date: d.start_date, sold_at: d.created_at,
       amount_total: d.amount_total, amount_neto: d.amount_neto,
-      amount_iva: d.amount_iva, amount_exempt: d.amount_exempt, branch_id: d.branch_id,
+      amount_iva: d.amount_iva, amount_exempt: d.amount_exempt, branch_id: d.branch_id,seller_id: d.seller_id,
       items_synced: true,
     });
 

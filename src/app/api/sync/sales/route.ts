@@ -1,67 +1,46 @@
 import { NextResponse } from "next/server";
-   import { relbaseFetch } from "@/lib/relbase";
-   import { supabase } from "@/lib/supabase";
+import { relbaseFetch } from "@/lib/relbase";
+import { supabase } from "@/lib/supabase";
 
-   const TYPE_BOLETA = 39;
-   const DAYS = 90;
+const TYPE_BOLETA = 39;
+const DAYS = 90;
 
-   export async function GET() {
-     const cutoff = new Date();
-     cutoff.setDate(cutoff.getDate() - DAYS);
+export async function GET() {
+  const since = new Date();
+  since.setDate(since.getDate() - DAYS);
 
-     let page = 1;
-     let imported = 0;
-     let stop = false;
+  let page = 1;
+  let imported = 0;
+  let stop = false;
 
-     while (!stop) {
-       const data = await relbaseFetch(
-         `/dtes?type_document=${TYPE_BOLETA}&per_page=50&page=${page}`
-       );
-       const dtes = data?.data?.dtes ?? [];
-       if (dtes.length === 0) break;
+  while (!stop) {
+    const data = await relbaseFetch(`/dtes?type_document=${TYPE_BOLETA}&per_page=50&page=${page}`);
+    const dtes = data?.data?.dtes ?? [];
+    if (dtes.length === 0) break;
 
-       const rows = [];
-       for (const d of dtes) {
-         // La lista viene de más nueva a más antigua: al pasar el corte, paramos.
-         if (new Date(d.start_date) < cutoff) {
-           stop = true;
-           continue;
-         }
-         rows.push({
-           id: d.id,
-           folio: d.folio,
-           type_document: d.type_document,
-           type_document_name: d.type_document_name,
-           status: d.status,
-           sii_status: d.sii_status,
-           issued_date: d.start_date,
-           sold_at: d.created_at,
-           amount_total: d.amount_total,
-           amount_neto: d.amount_neto,
-           amount_iva: d.amount_iva,
-           amount_exempt: d.amount_exempt,
-           branch_id: d.branch_id,
-         });
-       }
+    const rows = [];
+    for (const d of dtes) {
+      if (new Date(d.created_at) < since) { stop = true; break; }
+      rows.push({
+        id: d.id, folio: d.folio, type_document: d.type_document,
+        type_document_name: d.type_document_name, status: d.status, sii_status: d.sii_status,
+        issued_date: d.start_date, sold_at: d.created_at,
+        amount_total: d.amount_total, amount_neto: d.amount_neto,
+        amount_iva: d.amount_iva, amount_exempt: d.amount_exempt,
+        branch_id: d.branch_id, seller_id: d.seller_id,
+      });
+    }
+    if (rows.length > 0) {
+      const { error } = await supabase.from("sales").upsert(rows);
+      if (error) return NextResponse.json({ ok: false, error: error.message, imported }, { status: 500 });
+      imported += rows.length;
+    }
 
-       if (rows.length > 0) {
-         const { error } = await supabase.from("sales").upsert(rows);
-         if (error) {
-           return NextResponse.json(
-             { ok: false, error: error.message, imported },
-             { status: 500 }
-           );
-         }
-         imported += rows.length;
-       }
+    const nextPage = data?.meta?.next_page;
+    if (!nextPage || nextPage === -1) break;
+    page = nextPage;
+    await new Promise((r) => setTimeout(r, 250));
+  }
 
-       const nextPage = data?.meta?.next_page;
-       if (!nextPage || nextPage === -1) break;
-       page = nextPage;
-
-       // Pequeña pausa para respetar el límite de 5 solicitudes/seg
-       await new Promise((r) => setTimeout(r, 250));
-     }
-
-     return NextResponse.json({ ok: true, imported });
-   }
+  return NextResponse.json({ ok: true, imported });
+}

@@ -3,8 +3,8 @@ import { getValidToken } from "@/lib/relbase-tokens";
 
 const API_BASE = process.env.RELBASE_API_BASE!;
 const CANDIDATES = [
-  "/dtes/47899368?type_document=39",
-  "/dtes/47899368",
+  "/productos/8082863", // CAFÉ EXPRESSO, para ver su categoría
+  "/productos?per_page=2", // vista de lista, por si la categoría también viene aquí
 ];
 
 export async function GET() {
