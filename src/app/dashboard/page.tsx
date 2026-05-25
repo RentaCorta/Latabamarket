@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import * as XLSX from "xlsx";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie,
   XAxis, YAxis, Tooltip, CartesianGrid, Cell, Legend,
@@ -18,6 +19,7 @@ type Kpis = {
   sellers: { seller_id: number; total: number; transactions: number }[];
   service_weekly: { week: string; grupo: string; units: number; revenue: number }[];
   coffee_weekly: { week: string; units: number; revenue: number }[];
+  categories: { category: string; units: number; revenue: number }[];
 };
 
 const clp = (n: unknown) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Number(n) || 0);
@@ -38,6 +40,7 @@ const C = { indigo: "#4f46e5", emerald: "#10b981", amber: "#f59e0b", slate: "#cb
 const MIX: Record<string, string> = { Servicio: "#4f46e5", "Café": "#f59e0b", Retail: "#94a3b8" };
 
 export default function Dashboard() {
+  const [tab, setTab] = useState("general");
   const [preset, setPreset] = useState("mes");
   const [range, setRange] = useState(presetRange("mes"));
   const [shift, setShift] = useState("all");
@@ -62,6 +65,27 @@ export default function Dashboard() {
   const applyCustom = (field: "from" | "to", v: string) => { setPreset("custom"); setRange((r) => ({ ...r, [field]: v })); };
   const delta = (cur: unknown, prev: unknown) => { const a = Number(cur), b = Number(prev); return b > 0 ? ((a - b) / b) * 100 : null; };
 
+  const exportServiceExcel = () => {
+    if (!kpis) return;
+    const weeks = [...new Set(kpis.service_weekly.map((r) => r.week))].sort();
+    const val = (w: string, g: string, k: "units" | "revenue") => {
+      const row = kpis.service_weekly.find((r) => r.week === w && r.grupo === g);
+      return row ? Number(row[k]) : 0;
+    };
+    const rows = weeks.map((w) => ({
+      Semana: `Sem. ${w.slice(5)}`,
+      "Completos (cant)": val(w, "Completos", "units"), "Completos ($)": val(w, "Completos", "revenue"),
+      "Churrascos (cant)": val(w, "Churrascos", "units"), "Churrascos ($)": val(w, "Churrascos", "revenue"),
+      "Sandwiches (cant)": val(w, "Sandwiches", "units"), "Sandwiches ($)": val(w, "Sandwiches", "revenue"),
+      "Total (cant)": val(w, "Completos", "units") + val(w, "Churrascos", "units") + val(w, "Sandwiches", "units"),
+      "Total ($)": val(w, "Completos", "revenue") + val(w, "Churrascos", "revenue") + val(w, "Sandwiches", "revenue"),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Servicio");
+    XLSX.writeFile(wb, `servicio-${kpis.range.from}-a-${kpis.range.to}.xlsx`);
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
@@ -70,6 +94,15 @@ export default function Dashboard() {
           {range.from} a {range.to}{shift !== "all" && ` · turno ${shift === "manana" ? "mañana" : "tarde"}`}
         </p>
 
+        {/* Pestañas */}
+        <div className="mt-5 flex gap-1.5 border-b border-slate-200">
+          {[["general", "General"], ["productos", "Productos y categorías"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition ${tab === k ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>{l}</button>
+          ))}
+        </div>
+
+        {/* Filtros (aplican a ambas pestañas) */}
         <div className="mt-5 flex flex-wrap items-center gap-3">
           <div className="flex gap-1.5">
             {[["mes", "Este mes"], ["mes_anterior", "Mes anterior"], ["3meses", "Últimos 3 meses"]].map(([k, l]) => (
@@ -93,7 +126,8 @@ export default function Dashboard() {
         {error && <div className="mt-6 rounded-xl bg-rose-50 p-4 text-rose-700">Error: {error}</div>}
         {loading && <div className="mt-6 text-slate-400">Cargando…</div>}
 
-        {kpis && !loading && (
+        {/* ===== PESTAÑA GENERAL ===== */}
+        {kpis && !loading && tab === "general" && (
           <>
             <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
               <Kpi title="Ventas" value={clp(kpis.summary.total)} delta={delta(kpis.summary.total, kpis.prev_summary?.total)} />
@@ -209,7 +243,13 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </Card>
 
-            <Card className="mt-4" title="Servicio semana a semana" action={<Toggle value={serviceMetric} onChange={(v) => setServiceMetric(v as "units" | "revenue")} options={[["units", "Cantidad"], ["revenue", "Ingreso"]]} />}>
+            <Card className="mt-4" title="Servicio semana a semana"
+              action={
+                <div className="flex items-center gap-2">
+                  <button onClick={exportServiceExcel} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                  <Toggle value={serviceMetric} onChange={(v) => setServiceMetric(v as "units" | "revenue")} options={[["units", "Cantidad"], ["revenue", "Ingreso"]]} />
+                </div>
+              }>
               {(() => {
                 const weeks = [...new Set(kpis.service_weekly.map((r) => r.week))].sort();
                 const cell = (w: string, g: string) => {
@@ -261,6 +301,57 @@ export default function Dashboard() {
               })()}
             </Card>
           </>
+        )}
+
+        {/* ===== PESTAÑA PRODUCTOS Y CATEGORÍAS ===== */}
+        {kpis && !loading && tab === "productos" && (
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <Card title={`Productos vendidos (${kpis.top_products.length})`}>
+              <div className="max-h-[560px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-slate-500">
+                      <th className="pb-2 font-medium">Producto</th>
+                      <th className="pb-2 text-right font-medium">Cantidad</th>
+                      <th className="pb-2 text-right font-medium">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...kpis.top_products].sort((a, b) => Number(b.revenue) - Number(a.revenue)).map((p, i) => (
+                      <tr key={i} className="border-t border-slate-100">
+                        <td className="py-1.5 pr-2">{p.name}</td>
+                        <td className="py-1.5 text-right">{num(p.units)}</td>
+                        <td className="py-1.5 text-right">{clp(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            <Card title={`Categorías (${kpis.categories.length})`}>
+              <div className="max-h-[560px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white">
+                    <tr className="text-left text-slate-500">
+                      <th className="pb-2 font-medium">Categoría</th>
+                      <th className="pb-2 text-right font-medium">Cantidad</th>
+                      <th className="pb-2 text-right font-medium">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...kpis.categories].sort((a, b) => Number(b.revenue) - Number(a.revenue)).map((c, i) => (
+                      <tr key={i} className="border-t border-slate-100">
+                        <td className="py-1.5 pr-2">{c.category}</td>
+                        <td className="py-1.5 text-right">{num(c.units)}</td>
+                        <td className="py-1.5 text-right">{clp(c.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
     </main>
