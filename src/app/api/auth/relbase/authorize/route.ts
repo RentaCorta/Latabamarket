@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
        client_id: process.env.RELBASE_CLIENT_ID!,
        redirect_uri: process.env.RELBASE_REDIRECT_URI!,
        response_type: "code",
-       scope: "documents:read products:read webhooks:read webhooks:write",
+       scope: "documents:read products:read webhooks:read webhooks:write users:read",
        state,
      });
 

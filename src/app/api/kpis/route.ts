@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - days + 1);
 
   const args = { p_start: from, p_end: to, p_shift: shift };
-  const [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories] = await Promise.all([
+  const [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow] = await Promise.all([
     supabase.rpc("kpi_summary", args),
     supabase.rpc("kpi_summary", { p_start: fmt(prevStart), p_end: fmt(prevEnd), p_shift: shift }),
     supabase.rpc("kpi_daily", args),
@@ -30,9 +30,10 @@ export async function GET(request: Request) {
     supabase.rpc("kpi_service_weekly", args),
     supabase.rpc("kpi_coffee_weekly", args),
     supabase.rpc("kpi_categories", args),
+    supabase.rpc("kpi_slow_movers", { p_days: 15 }),
   ]);
 
-  for (const r of [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories]) {
+  for (const r of [summary, prev, daily, hourly, top, mix, sellers, service, coffee, categories, slow]) {
     if (r.error) return NextResponse.json({ ok: false, error: r.error.message }, { status: 500 });
   }
 
@@ -49,5 +50,6 @@ export async function GET(request: Request) {
     service_weekly: service.data,
     coffee_weekly: coffee.data,
     categories: categories.data,
+    slow_movers: slow.data,
   });
 }
