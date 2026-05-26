@@ -2,27 +2,30 @@ import { NextResponse } from "next/server";
 import { getValidToken } from "@/lib/relbase-tokens";
 
 const API_BASE = process.env.RELBASE_API_BASE!;
-const CANDIDATES = [
-  "/vendedores",
-  "/usuarios",
-  "/compras/7832889",
-];
 
 export async function GET() {
   const token = await getValidToken();
-  const results: unknown[] = [];
+  let page = 1;
+  const all: any[] = [];
 
-  for (const path of CANDIDATES) {
-    try {
-      const res = await fetch(`${API_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
-      const body = await res.text();
-      let parsed: any = null;
-      try { parsed = JSON.parse(body); } catch {}
-      results.push({ path, status: res.status, body: parsed ?? body.slice(0, 400) });
-    } catch (e) {
-      results.push({ path, error: (e as Error).message });
-    }
+  while (true) {
+    const res = await fetch(`${API_BASE}/compras?per_page=100&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const j = await res.json();
+    const arr = j?.data?.compras ?? [];
+    all.push(...arr);
+    const np = j?.meta?.next_page;
+    if (!np || np === -1 || arr.length === 0) break;
+    page = np;
+    await new Promise((r) => setTimeout(r, 250));
   }
 
-  return NextResponse.json({ results });
+  const byMonth: Record<string, number> = {};
+  for (const c of all) {
+    const m = (c.start_date ?? "").slice(0, 7);
+    byMonth[m] = (byMonth[m] ?? 0) + 1;
+  }
+
+  return NextResponse.json({ total: all.length, byMonth });
 }

@@ -13,7 +13,7 @@ type Kpis = {
   range: { from: string; to: string; shift: string };
   summary: Summary;
   prev_summary: Summary;
-  daily: { day: string; total: number; transactions: number }[];
+  daily: { day: string; total: number; neto: number; transactions: number }[];
   hourly: { hour: number; total: number; transactions: number }[];
   top_products: { name: string; units: number; revenue: number }[];
   category_mix: { grupo: string; revenue: number }[];
@@ -172,15 +172,22 @@ export default function Dashboard() {
 
             <Card className="mt-4" title="Ventas por día">
               <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={kpis.daily.map((d) => ({ label: d.day.slice(5), total: Number(d.total) }))}>
-                  <defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={C.indigo} stopOpacity={0.25} /><stop offset="100%" stopColor={C.indigo} stopOpacity={0} />
-                  </linearGradient></defs>
+                <AreaChart data={kpis.daily.map((d) => ({ label: d.day.slice(5), total: Number(d.total), neto: Number(d.neto) }))}>
+                  <defs>
+                    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={C.indigo} stopOpacity={0.25} /><stop offset="100%" stopColor={C.indigo} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="g1b" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={C.emerald} stopOpacity={0.2} /><stop offset="100%" stopColor={C.emerald} stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${Math.round(v / 1000)}K`} />
                   <Tooltip formatter={(v) => clp(v)} />
-                  <Area type="monotone" dataKey="total" stroke={C.indigo} strokeWidth={2} fill="url(#g1)" />
+                  <Legend />
+                  <Area type="monotone" dataKey="total" name="Ventas" stroke={C.indigo} strokeWidth={2} fill="url(#g1)" />
+                  <Area type="monotone" dataKey="neto" name="Venta neta" stroke={C.emerald} strokeWidth={2} fill="url(#g1b)" />
                 </AreaChart>
               </ResponsiveContainer>
             </Card>
