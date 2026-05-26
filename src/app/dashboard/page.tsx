@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie,
@@ -22,7 +22,7 @@ type Kpis = {
   coffee_weekly: { week: string; units: number; revenue: number }[];
   categories: { category: string; units: number; revenue: number }[];
   purchases_summary: { purchased_neto: number; purchased_total: number; purchases_count: number; sales_neto: number };
-  purchases_by_provider: { provider: string; docs: number; neto: number }[];
+  purchases_by_provider: { provider: string; docs: number; neto: number; sales_neto: number }[];
   purchases_vs_sales: { week: string; compras: number; ventas: number }[];
 };
 
@@ -65,6 +65,20 @@ export default function Dashboard() {
   const [dowMetric, setDowMetric] = useState<"total" | "neto">("total");
   const [prodSearch, setProdSearch] = useState("");
   const [catSearch, setCatSearch] = useState("");
+  const [prodSearchInput, setProdSearchInput] = useState("");
+  const [catSearchInput, setCatSearchInput] = useState("");
+  const prodDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const catDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleProdSearch = useCallback((v: string) => {
+    setProdSearchInput(v);
+    if (prodDebounce.current) clearTimeout(prodDebounce.current);
+    prodDebounce.current = setTimeout(() => setProdSearch(v), 150);
+  }, []);
+  const handleCatSearch = useCallback((v: string) => {
+    setCatSearchInput(v);
+    if (catDebounce.current) clearTimeout(catDebounce.current);
+    catDebounce.current = setTimeout(() => setCatSearch(v), 150);
+  }, []);
   const [slowDays, setSlowDays] = useState(15);
   const [slowCat, setSlowCat] = useState("todas");
   const [slowMovers, setSlowMovers] = useState<SlowMover[]>([]);
@@ -172,7 +186,7 @@ export default function Dashboard() {
           <>
             <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
               <Kpi title="Ventas" value={clp(kpis.summary.total)} delta={delta(kpis.summary.total, kpis.prev_summary?.total)} />
-              <Kpi title="Venta neta" value={clp(kpis.summary.neto)} delta={delta(kpis.summary.neto, kpis.prev_summary?.neto)} />
+              <Kpi title="Venta neta + Exenta" value={clp(kpis.summary.neto)} delta={delta(kpis.summary.neto, kpis.prev_summary?.neto)} />
               <Kpi title="Venta exenta" value={clp(kpis.summary.exempt)} delta={delta(kpis.summary.exempt, kpis.prev_summary?.exempt)} />
               <Kpi title="Costo total productos" value={clp(kpis.summary.cost)} delta={delta(kpis.summary.cost, kpis.prev_summary?.cost)} />
               <Kpi title="Utilidad" value={clp(kpis.summary.profit)} delta={delta(kpis.summary.profit, kpis.prev_summary?.profit)}
@@ -408,8 +422,9 @@ export default function Dashboard() {
         {kpis && !loading && tab === "productos" && (() => {
           const prodFiltered = [...kpis.top_products].filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const catFiltered = [...kpis.categories].filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
-          const slowCats = [...new Set(slowMovers.map((s) => s.category).filter(Boolean))].sort();
-          const slowFiltered = slowMovers.filter((s) => slowCat === "todas" || s.category === slowCat);
+          const EXCLUDED_CATS = ["GASTRONOMICA TUPUNGATO SPA", "COMPLETOS"];
+          const slowCats = [...new Set(slowMovers.map((s) => s.category).filter((c) => c && !EXCLUDED_CATS.includes(c)))].sort();
+          const slowFiltered = slowMovers.filter((s) => !EXCLUDED_CATS.includes(s.category) && (slowCat === "todas" || s.category === slowCat));
           return (
             <>
               <Card className="mt-6" title="Productos con stock sin venta">
@@ -458,7 +473,7 @@ export default function Dashboard() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <Card title={`Productos vendidos (${prodFiltered.length})`}
-                  action={<input value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  action={<input value={prodSearchInput} onChange={(e) => handleProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
                   <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
@@ -482,7 +497,7 @@ export default function Dashboard() {
                 </Card>
 
                 <Card title={`Categorías (${catFiltered.length})`}
-                  action={<input value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  action={<input value={catSearchInput} onChange={(e) => handleCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
                   <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
@@ -517,7 +532,7 @@ export default function Dashboard() {
             <>
               <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <Kpi title="Total comprado (neto)" value={clp(ps?.purchased_neto)} delta={null} sub="facturas de compra" />
-                <Kpi title="Total vendido (neto)" value={clp(ps?.sales_neto)} delta={null} sub="en el período" />
+                <Kpi title="Total vendido (neto + exento)" value={clp(ps?.sales_neto)} delta={null} sub="en el período" />
                 <Kpi title="Compras / Ventas" value={ratio !== null ? `${ratio.toFixed(0)}%` : "—"} delta={null} sub="cuánto compras por venta" />
                 <Kpi title="N° de compras" value={num(ps?.purchases_count)} delta={null} sub="facturas" />
               </div>
@@ -543,7 +558,8 @@ export default function Dashboard() {
                       <tr className="text-left text-slate-500">
                         <th className="pb-2 pr-4 font-medium">Proveedor</th>
                         <th className="pb-2 px-4 text-right font-medium">N° docs</th>
-                        <th className="pb-2 pl-6 text-right font-medium">Monto (neto)</th>
+                        <th className="pb-2 px-4 text-right font-medium">Comprado (neto)</th>
+                        <th className="pb-2 pl-6 text-right font-medium">Vendido (neto + exento)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -551,7 +567,8 @@ export default function Dashboard() {
                         <tr key={i} className="border-t border-slate-100">
                           <td className="py-1.5 pr-4">{p.provider}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums">{num(p.docs)}</td>
-                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(p.neto)}</td>
+                          <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{clp(p.neto)}</td>
+                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{p.sales_neto != null ? clp(p.sales_neto) : <span className="text-slate-300">—</span>}</td>
                         </tr>
                       ))}
                     </tbody>
