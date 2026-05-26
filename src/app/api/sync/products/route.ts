@@ -19,6 +19,7 @@ export async function GET() {
       category_name: p.category?.name ?? null,
       unit_cost: p.unit_cost,
       price_sale: p.price_sale,
+      stock: (p.inventories ?? []).reduce((a: number, inv: any) => a + (Number(inv.stock) || 0), 0),
     }));
 
     const { error } = await supabase.from("products").upsert(rows);

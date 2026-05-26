@@ -20,7 +20,7 @@ type Kpis = {
   service_weekly: { week: string; grupo: string; units: number; revenue: number }[];
   coffee_weekly: { week: string; units: number; revenue: number }[];
   categories: { category: string; units: number; revenue: number }[];
-  slow_movers: { product_id: number; name: string; category: string; last_sold: string; days_since: number }[];
+  slow_movers: { product_id: number; name: string; category: string; stock: number; last_sold: string; days_since: number }[];
   purchases_summary: { purchased_neto: number; purchased_total: number; purchases_count: number; sales_neto: number };
   purchases_by_provider: { provider: string; docs: number; neto: number }[];
   purchases_vs_sales: { week: string; compras: number; ventas: number }[];
@@ -318,63 +318,16 @@ export default function Dashboard() {
           const prodFiltered = [...kpis.top_products].filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const catFiltered = [...kpis.categories].filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
           return (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <Card title={`Productos vendidos (${prodFiltered.length})`}
-                action={<input value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
-                <div className="max-h-[560px] overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-white">
-                      <tr className="text-left text-slate-500">
-                        <th className="pb-2 pr-4 font-medium">Producto</th>
-                        <th className="pb-2 px-4 text-right font-medium">Cantidad</th>
-                        <th className="pb-2 pl-6 text-right font-medium">Monto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {prodFiltered.map((p, i) => (
-                        <tr key={i} className="border-t border-slate-100">
-                          <td className="py-1.5 pr-4">{p.name}</td>
-                          <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{num(p.units)}</td>
-                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(p.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card title={`Categorías (${catFiltered.length})`}
-                action={<input value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
-                <div className="max-h-[560px] overflow-y-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-white">
-                      <tr className="text-left text-slate-500">
-                        <th className="pb-2 pr-4 font-medium">Categoría</th>
-                        <th className="pb-2 px-4 text-right font-medium">Cantidad</th>
-                        <th className="pb-2 pl-6 text-right font-medium">Monto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {catFiltered.map((c, i) => (
-                        <tr key={i} className="border-t border-slate-100">
-                          <td className="py-1.5 pr-4">{c.category}</td>
-                          <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{num(c.units)}</td>
-                          <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(c.revenue)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-
-              <Card className="lg:col-span-2" title={`Productos sin venta hace 15+ días (${kpis.slow_movers.length})`}>
-                <p className="mb-3 text-xs text-slate-500">Productos que se vendían pero llevan más de 15 días sin venderse — candidatos a oferta para rotarlos rápido.</p>
+            <>
+              <Card className="mt-6" title={`Productos con stock sin venta hace 15+ días (${kpis.slow_movers.length})`}>
+                <p className="mb-3 text-xs text-slate-500">Productos con stock disponible que se vendían pero llevan más de 15 días sin venderse — candidatos a oferta para rotarlos rápido.</p>
                 <div className="max-h-[420px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
                         <th className="pb-2 pr-4 font-medium">Producto</th>
                         <th className="pb-2 px-4 font-medium">Categoría</th>
+                        <th className="pb-2 px-4 text-right font-medium">Stock</th>
                         <th className="pb-2 px-4 text-right font-medium">Última venta</th>
                         <th className="pb-2 pl-6 text-right font-medium">Días sin vender</th>
                       </tr>
@@ -384,6 +337,7 @@ export default function Dashboard() {
                         <tr key={s.product_id} className="border-t border-slate-100">
                           <td className="py-1.5 pr-4">{s.name}</td>
                           <td className="py-1.5 px-4 text-slate-500">{s.category ?? "—"}</td>
+                          <td className="py-1.5 px-4 text-right tabular-nums">{num(s.stock)}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{s.last_sold}</td>
                           <td className="py-1.5 pl-6 text-right font-semibold tabular-nums">{num(s.days_since)}</td>
                         </tr>
@@ -392,7 +346,57 @@ export default function Dashboard() {
                   </table>
                 </div>
               </Card>
-            </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <Card title={`Productos vendidos (${prodFiltered.length})`}
+                  action={<input value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
+                  <div className="max-h-[560px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-slate-500">
+                          <th className="pb-2 pr-4 font-medium">Producto</th>
+                          <th className="pb-2 px-4 text-right font-medium">Cantidad</th>
+                          <th className="pb-2 pl-6 text-right font-medium">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {prodFiltered.map((p, i) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="py-1.5 pr-4">{p.name}</td>
+                            <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{num(p.units)}</td>
+                            <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(p.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+
+                <Card title={`Categorías (${catFiltered.length})`}
+                  action={<input value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
+                  <div className="max-h-[560px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="text-left text-slate-500">
+                          <th className="pb-2 pr-4 font-medium">Categoría</th>
+                          <th className="pb-2 px-4 text-right font-medium">Cantidad</th>
+                          <th className="pb-2 pl-6 text-right font-medium">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {catFiltered.map((c, i) => (
+                          <tr key={i} className="border-t border-slate-100">
+                            <td className="py-1.5 pr-4">{c.category}</td>
+                            <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{num(c.units)}</td>
+                            <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(c.revenue)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </Card>
+              </div>
+            </>
           );
         })()}
 
