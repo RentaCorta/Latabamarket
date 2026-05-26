@@ -40,7 +40,25 @@ const PROVIDERS = [
   "TONY GALLO SPA",
   "TRANSPORTES NAVIA AGUILAR MILLAPEL E.I.R.L.",
   "UOVA SPA",
-];
+  // Proveedores adicionales detectados desde categorías
+  "AGROINDUSTRIA AYC SPA",
+  "ALIMENTOS DESHIDRATADOS VICTOR MANUEL ACEVEDO",
+  "COMERCIAL EL CAPON LTDA.",
+  "COMERCIAL GLORIA PATRICIA CARE URRUTIA E.I.R.L.",
+  "COMERCIAL LA PALESTINA",
+  "COMERCIAL VALLE PATAGONIA",
+  "COMERCIALIZADORA Y DISTRIB. HENG FA LTDA.",
+  "DITAB CHILE SPA",
+  "FOTOGRAFICA COYHAIQUE LTDA.",
+  "GASTRONOMICA GOLOSO LTDA.",
+  "GASTRONOMICA TUPUNGATO SPA",
+  "HIELO AUSTRAL",
+  "HOME COOKING SPA",
+  "IMP. PROD. Y COMER. DE ENVASES PROD DE EMPAQUE HIG",
+  "Modinger Hermanos Sociedad Anonima",
+  "SOC. COMERCIAL Y DISTRIBUIDORA HN LTDA.",
+  "Transp Navia Aguilar Millapel E.I.R.L.",
+].sort((a, b) => a.localeCompare(b, "es"));
 
 export default function MantenedorPage() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
@@ -57,12 +75,8 @@ export default function MantenedorPage() {
     fetch("/api/category-map")
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) {
-          setMappings(d.mappings);
-          setCategories(d.categories ?? []);
-        } else {
-          setError(d.error);
-        }
+        if (d.ok) { setMappings(d.mappings); setCategories(d.categories ?? []); }
+        else setError(d.error);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -70,9 +84,11 @@ export default function MantenedorPage() {
 
   useEffect(() => { load(); }, []);
 
-  // Categorías que aún no tienen mapeo
   const mappedCats = new Set(mappings.map((m) => m.category_name));
   const availableCats = categories.filter((c) => !mappedCats.has(c));
+
+  const usedProviders = (excludeCat?: string) =>
+    new Set(mappings.filter((m) => m.provider_name && m.category_name !== excludeCat).map((m) => m.provider_name as string));
 
   const save = async (category_name: string, provider_name: string | null) => {
     setSaveState((s) => ({ ...s, [category_name]: "saving" }));
@@ -120,7 +136,7 @@ export default function MantenedorPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-3xl px-4 py-8 md:px-8">
-        <div className="mb-1 flex items-center gap-3">
+        <div className="mb-1">
           <a href="/dashboard" className="text-sm text-slate-400 hover:text-slate-600">← Panel</a>
         </div>
         <h1 className="text-xl font-bold tracking-tight">Mapeo Categoría → Proveedor</h1>
@@ -132,14 +148,12 @@ export default function MantenedorPage() {
         {error && <div className="mt-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-700">Error: {error}</div>}
 
         <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-          {/* Header */}
           <div className="grid grid-cols-[1fr_2fr_auto] gap-4 border-b border-slate-100 px-5 py-3 text-xs font-medium text-slate-400">
             <span>Categoría de producto</span>
             <span>Proveedor en compras</span>
             <span></span>
           </div>
 
-          {/* Rows */}
           {loading ? (
             <div className="px-5 py-8 text-sm text-slate-400">Cargando…</div>
           ) : mappings.length === 0 ? (
@@ -148,17 +162,23 @@ export default function MantenedorPage() {
             <div className="divide-y divide-slate-100">
               {mappings.map((m) => {
                 const st = saveState[m.category_name] ?? "idle";
+                const used = usedProviders(m.category_name);
                 return (
                   <div key={m.category_name} className="grid grid-cols-[1fr_2fr_auto] items-center gap-4 px-5 py-3">
                     <span className="font-mono text-sm font-medium">{m.category_name}</span>
                     <select
-                      defaultValue={m.provider_name ?? ""}
+                      value={m.provider_name ?? ""}
                       onChange={(e) => save(m.category_name, e.target.value || null)}
                       disabled={st === "saving"}
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none disabled:opacity-50"
                     >
                       <option value="">— Sin asignar —</option>
-                      {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+                      {PROVIDERS.filter((p) => !used.has(p)).map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                      {m.provider_name && used.has(m.provider_name) && (
+                        <option value={m.provider_name}>{m.provider_name}</option>
+                      )}
                     </select>
                     <div className="flex items-center gap-2">
                       {st === "saving" && <span className="text-xs text-slate-400">Guardando…</span>}
@@ -176,7 +196,6 @@ export default function MantenedorPage() {
             </div>
           )}
 
-          {/* Add new */}
           <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
             <p className="mb-3 text-xs font-medium text-slate-500">Agregar categoría</p>
             {availableCats.length === 0 && !loading ? (
@@ -202,7 +221,9 @@ export default function MantenedorPage() {
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
                   >
                     <option value="">— Sin asignar —</option>
-                    {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+                    {PROVIDERS.filter((p) => !usedProviders().has(p)).map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
                   </select>
                 </div>
                 <button
@@ -218,8 +239,7 @@ export default function MantenedorPage() {
         </div>
 
         <p className="mt-4 text-xs text-slate-400">
-          💡 Las categorías se cargan directamente desde los productos registrados en el sistema.
-          Si hay un proveedor nuevo que no aparece en la lista, avisa para agregarlo.
+          💡 Las categorías se cargan desde los productos del sistema. Si falta un proveedor en la lista, avisa para agregarlo.
         </p>
       </div>
     </main>
