@@ -44,6 +44,7 @@ const PROVIDERS = [
 
 export default function MantenedorPage() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
   const [newCat, setNewCat] = useState("");
@@ -55,12 +56,23 @@ export default function MantenedorPage() {
     setLoading(true);
     fetch("/api/category-map")
       .then((r) => r.json())
-      .then((d) => { if (d.ok) setMappings(d.mappings); else setError(d.error); })
+      .then((d) => {
+        if (d.ok) {
+          setMappings(d.mappings);
+          setCategories(d.categories ?? []);
+        } else {
+          setError(d.error);
+        }
+      })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
+
+  // Categorías que aún no tienen mapeo
+  const mappedCats = new Set(mappings.map((m) => m.category_name));
+  const availableCats = categories.filter((c) => !mappedCats.has(c));
 
   const save = async (category_name: string, provider_name: string | null) => {
     setSaveState((s) => ({ ...s, [category_name]: "saving" }));
@@ -93,12 +105,12 @@ export default function MantenedorPage() {
   };
 
   const addNew = async () => {
-    if (!newCat.trim()) return;
+    if (!newCat) return;
     setAdding(true);
     const r = await fetch("/api/category-map", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ category_name: newCat.trim(), provider_name: newProv || null }),
+      body: JSON.stringify({ category_name: newCat, provider_name: newProv || null }),
     });
     const d = await r.json();
     if (d.ok) { setNewCat(""); setNewProv(""); load(); }
@@ -167,40 +179,46 @@ export default function MantenedorPage() {
           {/* Add new */}
           <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
             <p className="mb-3 text-xs font-medium text-slate-500">Agregar categoría</p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-400">Categoría (exacta)</label>
-                <input
-                  value={newCat}
-                  onChange={(e) => setNewCat(e.target.value)}
-                  placeholder="Ej: ANDINA"
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-slate-400">Proveedor</label>
-                <select
-                  value={newProv}
-                  onChange={(e) => setNewProv(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
+            {availableCats.length === 0 && !loading ? (
+              <p className="text-xs text-slate-400">✓ Todas las categorías ya tienen un mapeo asignado.</p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-400">Categoría</label>
+                  <select
+                    value={newCat}
+                    onChange={(e) => setNewCat(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
+                  >
+                    <option value="">— Seleccionar —</option>
+                    {availableCats.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-slate-400">Proveedor</label>
+                  <select
+                    value={newProv}
+                    onChange={(e) => setNewProv(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
+                  >
+                    <option value="">— Sin asignar —</option>
+                    {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <button
+                  onClick={addNew}
+                  disabled={adding || !newCat}
+                  className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
-                  <option value="">— Sin asignar —</option>
-                  {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
-                </select>
+                  {adding ? "Agregando…" : "Agregar"}
+                </button>
               </div>
-              <button
-                onClick={addNew}
-                disabled={adding || !newCat.trim()}
-                className="rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {adding ? "Agregando…" : "Agregar"}
-              </button>
-            </div>
+            )}
           </div>
         </div>
 
         <p className="mt-4 text-xs text-slate-400">
-          💡 El nombre de categoría debe coincidir exactamente con el que aparece en los productos (mayúsculas incluidas).
+          💡 Las categorías se cargan directamente desde los productos registrados en el sistema.
           Si hay un proveedor nuevo que no aparece en la lista, avisa para agregarlo.
         </p>
       </div>

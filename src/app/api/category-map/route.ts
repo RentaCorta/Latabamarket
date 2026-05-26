@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// GET — devuelve todos los mapeos
+// GET — devuelve todos los mapeos + categorías disponibles desde products
 export async function GET() {
-  const { data, error } = await supabase
-    .from("category_provider_map")
-    .select("*")
-    .order("category_name");
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, mappings: data });
+  const [mapRes, catRes] = await Promise.all([
+    supabase.from("category_provider_map").select("*").order("category_name"),
+    supabase.from("products").select("category_name").not("category_name", "is", null),
+  ]);
+  if (mapRes.error) return NextResponse.json({ ok: false, error: mapRes.error.message }, { status: 500 });
+  if (catRes.error) return NextResponse.json({ ok: false, error: catRes.error.message }, { status: 500 });
+
+  const categories = [...new Set((catRes.data ?? []).map((r: { category_name: string }) => r.category_name).filter(Boolean))].sort();
+  return NextResponse.json({ ok: true, mappings: mapRes.data, categories });
 }
 
 // POST — upsert de un mapeo (category_name es la PK)
