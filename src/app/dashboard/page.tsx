@@ -8,6 +8,7 @@ import {
 } from "recharts";
 
 type Summary = { total: number; neto: number; exempt: number; transactions: number; avg_ticket: number; cost: number; profit: number };
+type SlowMover = { product_id: number; name: string; category: string; stock: number; last_sold: string; days_since: number };
 type Kpis = {
   range: { from: string; to: string; shift: string };
   summary: Summary;
@@ -20,7 +21,6 @@ type Kpis = {
   service_weekly: { week: string; grupo: string; units: number; revenue: number }[];
   coffee_weekly: { week: string; units: number; revenue: number }[];
   categories: { category: string; units: number; revenue: number }[];
-  slow_movers: { product_id: number; name: string; category: string; stock: number; last_sold: string; days_since: number }[];
   purchases_summary: { purchased_neto: number; purchased_total: number; purchases_count: number; sales_neto: number };
   purchases_by_provider: { provider: string; docs: number; neto: number }[];
   purchases_vs_sales: { week: string; compras: number; ventas: number }[];
@@ -54,6 +54,9 @@ export default function Dashboard() {
   const [serviceMetric, setServiceMetric] = useState<"units" | "revenue">("units");
   const [prodSearch, setProdSearch] = useState("");
   const [catSearch, setCatSearch] = useState("");
+  const [slowDays, setSlowDays] = useState(15);
+  const [slowCat, setSlowCat] = useState("todas");
+  const [slowMovers, setSlowMovers] = useState<SlowMover[]>([]);
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +69,13 @@ export default function Dashboard() {
       .then((d) => { d.ok ? setKpis(d) : setError(d.error); setLoading(false); })
       .catch((e) => { setError(String(e)); setLoading(false); });
   }, [range, shift]);
+
+  useEffect(() => {
+    fetch(`/api/slow-movers?days=${slowDays}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setSlowMovers(d.slow_movers ?? []); })
+      .catch(() => {});
+  }, [slowDays]);
 
   const applyPreset = (p: string) => { setPreset(p); setRange(presetRange(p)); };
   const applyCustom = (field: "from" | "to", v: string) => { setPreset("custom"); setRange((r) => ({ ...r, [field]: v })); };
@@ -92,25 +102,37 @@ export default function Dashboard() {
     XLSX.writeFile(wb, `servicio-${kpis.range.from}-a-${kpis.range.to}.xlsx`);
   };
 
+  const exportSlowExcel = () => {
+    const filtered = slowMovers.filter((s) => slowCat === "todas" || s.category === slowCat);
+    const rows = filtered.map((s) => ({
+      Producto: s.name, "Categoría": s.category, Stock: Number(s.stock),
+      "Última venta": s.last_sold, "Días sin vender": Number(s.days_since),
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sin rotación");
+    XLSX.writeFile(wb, `sin-rotacion-${slowDays}dias.xlsx`);
+  };
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-8 md:px-8">
-        <h1 className="text-2xl font-bold tracking-tight">La Taba · Panel de KPIs</h1>
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8 md:px-8">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">La Taba · Panel de KPIs</h1>
         <p className="mt-1 text-sm text-slate-500">
           {range.from} a {range.to}{shift !== "all" && tab !== "compras" && ` · turno ${shift === "manana" ? "mañana" : "tarde"}`}
         </p>
 
         {/* Pestañas */}
-        <div className="mt-5 flex gap-1.5 border-b border-slate-200">
+        <div className="mt-5 flex gap-1.5 overflow-x-auto border-b border-slate-200">
           {[["general", "General"], ["productos", "Productos y categorías"], ["compras", "Compras"]].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition ${tab === k ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>{l}</button>
+              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2 text-sm font-medium transition ${tab === k ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}>{l}</button>
           ))}
         </div>
 
         {/* Filtros (aplican a todas las pestañas) */}
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             {[["mes", "Este mes"], ["mes_anterior", "Mes anterior"], ["3meses", "Últimos 3 meses"]].map(([k, l]) => (
               <button key={k} onClick={() => applyPreset(k)}
                 className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${preset === k ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}>{l}</button>
@@ -122,7 +144,7 @@ export default function Dashboard() {
             <input type="date" value={range.to} onChange={(e) => applyCustom("to", e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5" />
           </div>
           {tab !== "compras" && (
-            <div className="ml-auto flex gap-1.5">
+            <div className="flex gap-1.5 sm:ml-auto">
               {[["all", "Todo el día"], ["manana", "Mañana"], ["tarde", "Tarde"]].map(([k, l]) => (
                 <button key={k} onClick={() => setShift(k)}
                   className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${shift === k ? "bg-indigo-600 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}>{l}</button>
@@ -169,7 +191,7 @@ export default function Dashboard() {
                   <BarChart layout="vertical" margin={{ left: 8 }}
                     data={[...kpis.top_products].sort((a, b) => Number(b[prodMetric]) - Number(a[prodMetric])).slice(0, 10).map((p) => ({ name: p.name, val: Number(p[prodMetric]) }))}>
                     <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => prodMetric === "revenue" ? `$${Math.round(v / 1000)}K` : num(v)} />
-                    <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} />
                     <Tooltip formatter={(v) => prodMetric === "revenue" ? clp(v) : num(v)} />
                     <Bar dataKey="val" fill={C.emerald} radius={[0, 4, 4, 0]} />
                   </BarChart>
@@ -287,7 +309,7 @@ export default function Dashboard() {
                           const c = cell(w, "Completos"), ch = cell(w, "Churrascos"), sa = cell(w, "Sandwiches");
                           return (
                             <tr key={w} className="border-t border-slate-100">
-                              <td className="py-2">Sem. {w.slice(5)}</td>
+                              <td className="py-2 whitespace-nowrap">Sem. {w.slice(5)}</td>
                               <td className="py-2 text-right">{f(c)}</td>
                               <td className="py-2 text-right">{f(ch)}</td>
                               <td className="py-2 text-right">{f(sa)}</td>
@@ -317,11 +339,29 @@ export default function Dashboard() {
         {kpis && !loading && tab === "productos" && (() => {
           const prodFiltered = [...kpis.top_products].filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const catFiltered = [...kpis.categories].filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
+          const slowCats = [...new Set(slowMovers.map((s) => s.category).filter(Boolean))].sort();
+          const slowFiltered = slowMovers.filter((s) => slowCat === "todas" || s.category === slowCat);
           return (
             <>
-              <Card className="mt-6" title={`Productos con stock sin venta hace 15+ días (${kpis.slow_movers.length})`}>
-                <p className="mb-3 text-xs text-slate-500">Productos con stock disponible que se vendían pero llevan más de 15 días sin venderse — candidatos a oferta para rotarlos rápido.</p>
-                <div className="max-h-[420px] overflow-y-auto">
+              <Card className="mt-6" title="Productos con stock sin venta">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <select value={slowDays} onChange={(e) => { setSlowDays(Number(e.target.value)); setSlowCat("todas"); }}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
+                    <option value={7}>7+ días sin venta</option>
+                    <option value={15}>15+ días sin venta</option>
+                    <option value={30}>30+ días sin venta</option>
+                    <option value={60}>60+ días sin venta</option>
+                  </select>
+                  <select value={slowCat} onChange={(e) => setSlowCat(e.target.value)}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
+                    <option value="todas">Todas las categorías</option>
+                    {slowCats.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <button onClick={exportSlowExcel} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                  <span className="ml-auto text-xs text-slate-400">{slowFiltered.length} productos</span>
+                </div>
+                <p className="mb-3 text-xs text-slate-500">Productos con stock disponible que se vendían pero llevan tiempo sin venderse — candidatos a oferta para rotarlos rápido.</p>
+                <div className="max-h-[420px] overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
@@ -333,10 +373,10 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {kpis.slow_movers.map((s) => (
+                      {slowFiltered.map((s) => (
                         <tr key={s.product_id} className="border-t border-slate-100">
                           <td className="py-1.5 pr-4">{s.name}</td>
-                          <td className="py-1.5 px-4 text-slate-500">{s.category ?? "—"}</td>
+                          <td className="py-1.5 px-4 text-slate-500 whitespace-nowrap">{s.category ?? "—"}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums">{num(s.stock)}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{s.last_sold}</td>
                           <td className="py-1.5 pl-6 text-right font-semibold tabular-nums">{num(s.days_since)}</td>
@@ -349,8 +389,8 @@ export default function Dashboard() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <Card title={`Productos vendidos (${prodFiltered.length})`}
-                  action={<input value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
-                  <div className="max-h-[560px] overflow-y-auto">
+                  action={<input value={prodSearch} onChange={(e) => setProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
                         <tr className="text-left text-slate-500">
@@ -373,8 +413,8 @@ export default function Dashboard() {
                 </Card>
 
                 <Card title={`Categorías (${catFiltered.length})`}
-                  action={<input value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />}>
-                  <div className="max-h-[560px] overflow-y-auto">
+                  action={<input value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
                         <tr className="text-left text-slate-500">
@@ -428,7 +468,7 @@ export default function Dashboard() {
               </Card>
 
               <Card className="mt-4" title={`Compras por proveedor (${kpis.purchases_by_provider.length})`}>
-                <div className="max-h-[460px] overflow-y-auto">
+                <div className="max-h-[460px] overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
@@ -462,7 +502,7 @@ function Kpi({ title, value, delta, sub }: { title: string; value: string; delta
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
       <p className="text-xs font-medium text-slate-500">{title}</p>
-      <p className="mt-1.5 text-xl font-bold tracking-tight">{value}</p>
+      <p className="mt-1.5 text-lg font-bold tracking-tight sm:text-xl">{value}</p>
       <div className="mt-1.5 flex items-center gap-1.5 text-xs">
         {delta !== null && (
           <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 font-medium ${up ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
@@ -477,8 +517,8 @@ function Kpi({ title, value, delta, sub }: { title: string; value: string; delta
 
 function Card({ title, action, children, className = "" }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm ${className}`}>
-      <div className="mb-4 flex items-center justify-between">
+    <div className={`rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
         {action}
       </div>
