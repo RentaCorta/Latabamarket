@@ -40,6 +40,16 @@ function presetRange(preset: string) {
   return { from: fmtDate(new Date(y, m - 2, 1)), to: fmtDate(t) };
 }
 
+// Dado "YYYY-MM-DD" devuelve la fecha del lunes de esa semana y el día (0=Lun..6=Dom)
+function weekInfo(ymd: string) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = (dt.getUTCDay() + 6) % 7; // 0=Lun..6=Dom
+  dt.setUTCDate(dt.getUTCDate() - dow);
+  const weekKey = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  return { weekKey, dow };
+}
+
 const C = { indigo: "#4f46e5", emerald: "#10b981", amber: "#f59e0b", slate: "#cbd5e1" };
 const MIX: Record<string, string> = { Servicio: "#4f46e5", "Café": "#f59e0b", Retail: "#94a3b8" };
 
@@ -52,6 +62,7 @@ export default function Dashboard() {
   const [hourMetric, setHourMetric] = useState<"total" | "transactions">("total");
   const [coffeeMetric, setCoffeeMetric] = useState<"units" | "revenue">("units");
   const [serviceMetric, setServiceMetric] = useState<"units" | "revenue">("units");
+  const [dowMetric, setDowMetric] = useState<"total" | "neto">("total");
   const [prodSearch, setProdSearch] = useState("");
   const [catSearch, setCatSearch] = useState("");
   const [slowDays, setSlowDays] = useState(15);
@@ -270,18 +281,6 @@ export default function Dashboard() {
               </Card>
             </div>
 
-            <Card className="mt-4" title="Mix de venta por grupo">
-              <ResponsiveContainer width="100%" height={260}>
-                <PieChart>
-                  <Pie data={kpis.category_mix.map((c) => ({ name: c.grupo, value: Number(c.revenue) }))} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={2}>
-                    {kpis.category_mix.map((c, i) => <Cell key={i} fill={MIX[c.grupo] ?? "#94a3b8"} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => clp(v)} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </Card>
-
             <Card className="mt-4" title="Servicio semana a semana"
               action={
                 <div className="flex items-center gap-2">
@@ -338,6 +337,69 @@ export default function Dashboard() {
                   </div>
                 );
               })()}
+            </Card>
+
+            <Card className="mt-4" title="Ventas por semana y día"
+              action={<Toggle value={dowMetric} onChange={(v) => setDowMetric(v as "total" | "neto")} options={[["total", "Ventas"], ["neto", "Venta neta"]]} />}>
+              <p className="mb-3 text-xs text-slate-500">Cada fila es una semana; las columnas son los días, para comparar el mismo día entre semanas.</p>
+              {(() => {
+                const DOW = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+                const rows: Record<string, number[]> = {};
+                for (const d of kpis.daily) {
+                  const { weekKey, dow } = weekInfo(d.day);
+                  if (!rows[weekKey]) rows[weekKey] = [0, 0, 0, 0, 0, 0, 0];
+                  rows[weekKey][dow] += Number(dowMetric === "neto" ? d.neto : d.total);
+                }
+                const weekKeys = Object.keys(rows).sort();
+                const colTot = [0, 0, 0, 0, 0, 0, 0];
+                weekKeys.forEach((w) => rows[w].forEach((v, i) => { colTot[i] += v; }));
+                const grand = colTot.reduce((a, b) => a + b, 0);
+                return (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-500">
+                          <th className="pb-2 pr-2 font-medium">Semana</th>
+                          {DOW.map((d) => <th key={d} className="pb-2 px-2 text-right font-medium">{d}</th>)}
+                          <th className="pb-2 pl-2 text-right font-medium">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weekKeys.map((w) => {
+                          const vals = rows[w];
+                          const tot = vals.reduce((a, b) => a + b, 0);
+                          return (
+                            <tr key={w} className="border-t border-slate-100">
+                              <td className="py-2 pr-2 whitespace-nowrap">Sem. {w.slice(5)}</td>
+                              {vals.map((v, i) => <td key={i} className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{clp(v)}</td>)}
+                              <td className="py-2 pl-2 text-right font-semibold tabular-nums whitespace-nowrap">{clp(tot)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-bold">
+                          <td className="py-2 pr-2">Total</td>
+                          {colTot.map((v, i) => <td key={i} className="py-2 px-2 text-right tabular-nums whitespace-nowrap">{clp(v)}</td>)}
+                          <td className="py-2 pl-2 text-right tabular-nums whitespace-nowrap">{clp(grand)}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                );
+              })()}
+            </Card>
+
+            <Card className="mt-4" title="Mix de venta por grupo">
+              <ResponsiveContainer width="100%" height={260}>
+                <PieChart>
+                  <Pie data={kpis.category_mix.map((c) => ({ name: c.grupo, value: Number(c.revenue) }))} dataKey="value" nameKey="name" innerRadius={60} outerRadius={100} paddingAngle={2}>
+                    {kpis.category_mix.map((c, i) => <Cell key={i} fill={MIX[c.grupo] ?? "#94a3b8"} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => clp(v)} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
             </Card>
           </>
         )}
