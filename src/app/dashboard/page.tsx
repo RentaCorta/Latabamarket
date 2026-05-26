@@ -142,7 +142,10 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8 md:px-8">
-        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">La Taba · Panel de KPIs</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">La Taba · Panel de KPIs</h1>
+          <a href="/dashboard/mantenedor" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">⚙ Mapeo proveedores</a>
+        </div>
         <p className="mt-1 text-sm text-slate-500">
           {range.from} a {range.to}{shift !== "all" && tab !== "compras" && ` · turno ${shift === "manana" ? "mañana" : "tarde"}`}
         </p>
