@@ -40,25 +40,44 @@ const PROVIDERS = [
   "TONY GALLO SPA",
   "TRANSPORTES NAVIA AGUILAR MILLAPEL E.I.R.L.",
   "UOVA SPA",
-  // Proveedores adicionales detectados desde categorías
+  // Desde categorías de productos
   "AGROINDUSTRIA AYC SPA",
+  "AGROSUPER",
   "ALIMENTOS DESHIDRATADOS VICTOR MANUEL ACEVEDO",
+  "ANDINA",
+  "BIDFOOD",
+  "BLM",
+  "CCU",
+  "CIAL",
+  "COLUN",
   "COMERCIAL EL CAPON LTDA.",
   "COMERCIAL GLORIA PATRICIA CARE URRUTIA E.I.R.L.",
   "COMERCIAL LA PALESTINA",
   "COMERCIAL VALLE PATAGONIA",
   "COMERCIALIZADORA Y DISTRIB. HENG FA LTDA.",
+  "DIMAK",
   "DITAB CHILE SPA",
+  "ELPAC",
+  "Envasadora Aysén",
+  "ESPOL",
   "FOTOGRAFICA COYHAIQUE LTDA.",
   "GASTRONOMICA GOLOSO LTDA.",
   "GASTRONOMICA TUPUNGATO SPA",
   "HIELO AUSTRAL",
+  "HIMAX",
   "HOME COOKING SPA",
   "IMP. PROD. Y COMER. DE ENVASES PROD DE EMPAQUE HIG",
+  "INSUMOS PACKAGING",
+  "LA TABA",
   "Modinger Hermanos Sociedad Anonima",
+  "Multimix",
+  "PF",
   "SOC. COMERCIAL Y DISTRIBUIDORA HN LTDA.",
+  "TONY GALLO",
   "Transp Navia Aguilar Millapel E.I.R.L.",
-].sort((a, b) => a.localeCompare(b, "es"));
+  "TRAPANANDA",
+].filter((v, i, a) => a.indexOf(v) === i)
+ .sort((a, b) => a.localeCompare(b, "es"));
 
 export default function MantenedorPage() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
