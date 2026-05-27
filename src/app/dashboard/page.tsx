@@ -187,8 +187,11 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:py-8 md:px-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">La Taba · Panel de KPIs</h1>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo-lataba.png" alt="La Taba" className="h-10 w-auto rounded-md sm:h-12" />
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">La Taba · Panel de KPIs</h1>
+          </div>
           <a href="/dashboard/mantenedor" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">⚙ Mapeo proveedores</a>
         </div>
         <p className="mt-1 text-sm text-slate-500">
@@ -624,6 +627,13 @@ export default function Dashboard() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="sticky bottom-0 bg-white">
+                        <tr className="border-t-2 border-slate-300 font-bold">
+                          <td className="py-2 pr-4">Total</td>
+                          <td className="py-2 px-4 text-right tabular-nums whitespace-nowrap">{num(prodFiltered.reduce((a, p) => a + Number(p.units), 0))}</td>
+                          <td className="py-2 pl-6 text-right tabular-nums whitespace-nowrap">{clp(prodFiltered.reduce((a, p) => a + Number(p.revenue), 0))}</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </Card>
@@ -656,6 +666,13 @@ export default function Dashboard() {
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="sticky bottom-0 bg-white">
+                        <tr className="border-t-2 border-slate-300 font-bold">
+                          <td className="py-2 pr-4">Total</td>
+                          <td className="py-2 px-4 text-right tabular-nums whitespace-nowrap">{num(catFiltered.reduce((a, c) => a + Number(c.units), 0))}</td>
+                          <td className="py-2 pl-6 text-right tabular-nums whitespace-nowrap">{clp(catFiltered.reduce((a, c) => a + Number(c.revenue), 0))}</td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </Card>
