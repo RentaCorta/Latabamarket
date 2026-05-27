@@ -85,19 +85,35 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
-  const [selectedProds, setSelectedProds] = useState<Set<string>>(new Set());
+  // Filtros aplicados (los que viajan al backend)
+  const [appliedCats, setAppliedCats] = useState<Set<string>>(new Set());
+  const [appliedProds, setAppliedProds] = useState<Set<string>>(new Set());
+  // Filtros pendientes (lo que el usuario está editando, todavía sin aplicar)
+  const [pendingCats, setPendingCats] = useState<Set<string>>(new Set());
+  const [pendingProds, setPendingProds] = useState<Set<string>>(new Set());
   const [catFilterOpen, setCatFilterOpen] = useState(false);
   const [prodFilterOpen, setProdFilterOpen] = useState(false);
+  // Opciones disponibles para los filtros (independientes de los filtros activos)
+  const [filterOpts, setFilterOpts] = useState<{ categories: string[]; products: string[] }>({ categories: [], products: [] });
 
   useEffect(() => {
     setLoading(true);
     const q = new URLSearchParams({ from: range.from, to: range.to, shift });
+    if (appliedCats.size > 0) q.set("cats", [...appliedCats].join(","));
+    if (appliedProds.size > 0) q.set("prods", [...appliedProds].join(","));
     fetch(`/api/kpis?${q}`)
       .then((r) => r.json())
       .then((d) => { d.ok ? setKpis(d) : setError(d.error); setLoading(false); })
       .catch((e) => { setError(String(e)); setLoading(false); });
-  }, [range, shift]);
+  }, [range, shift, appliedCats, appliedProds]);
+
+  // Cargar opciones de filtros una sola vez al montar
+  useEffect(() => {
+    fetch("/api/filter-options")
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setFilterOpts({ categories: d.categories ?? [], products: d.products ?? [] }); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch(`/api/slow-movers?days=${slowDays}`)
@@ -128,7 +144,12 @@ export default function Dashboard() {
     });
   };
 
-  const hasActiveFilters = selectedCats.size > 0 || selectedProds.size > 0;
+  // Comparar Sets como strings ordenados para detectar cambios pendientes
+  const setKey = (s: Set<string>) => [...s].sort().join("|");
+  const filtersDirty = setKey(pendingCats) !== setKey(appliedCats) || setKey(pendingProds) !== setKey(appliedProds);
+  const applyFilters = () => { setAppliedCats(new Set(pendingCats)); setAppliedProds(new Set(pendingProds)); };
+  const clearFilters = () => { setPendingCats(new Set()); setPendingProds(new Set()); setAppliedCats(new Set()); setAppliedProds(new Set()); };
+  const hasActiveFilters = appliedCats.size > 0 || appliedProds.size > 0;
 
   const exportServiceExcel = () => {
     if (!kpis) return;
@@ -195,27 +216,35 @@ export default function Dashboard() {
             <span className="text-slate-400">→</span>
             <input type="date" value={range.to} onChange={(e) => applyCustom("to", e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5" />
           </div>
-          {kpis && (
-            <>
-              <MultiFilter
-                label="Categorías"
-                options={[...new Set(kpis.categories.map((c) => c.category).filter(Boolean))].sort()}
-                selected={selectedCats}
-                onToggle={(v) => toggleSetItem(setSelectedCats, v)}
-                onClear={() => setSelectedCats(new Set())}
-                open={catFilterOpen}
-                setOpen={setCatFilterOpen}
-              />
-              <MultiFilter
-                label="Productos"
-                options={[...new Set(kpis.top_products.map((p) => p.name).filter(Boolean))].sort()}
-                selected={selectedProds}
-                onToggle={(v) => toggleSetItem(setSelectedProds, v)}
-                onClear={() => setSelectedProds(new Set())}
-                open={prodFilterOpen}
-                setOpen={setProdFilterOpen}
-              />
-            </>
+          <MultiFilter
+            label="Categorías"
+            options={filterOpts.categories}
+            selected={pendingCats}
+            onToggle={(v) => toggleSetItem(setPendingCats, v)}
+            onClear={() => setPendingCats(new Set())}
+            open={catFilterOpen}
+            setOpen={setCatFilterOpen}
+          />
+          <MultiFilter
+            label="Productos"
+            options={filterOpts.products}
+            selected={pendingProds}
+            onToggle={(v) => toggleSetItem(setPendingProds, v)}
+            onClear={() => setPendingProds(new Set())}
+            open={prodFilterOpen}
+            setOpen={setProdFilterOpen}
+          />
+          {filtersDirty && (
+            <button onClick={applyFilters}
+              className="rounded-full bg-indigo-600 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
+              Aplicar filtros
+            </button>
+          )}
+          {hasActiveFilters && !filtersDirty && (
+            <button onClick={clearFilters}
+              className="rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100">
+              Limpiar
+            </button>
           )}
           {tab !== "compras" && (
             <div className="flex gap-1.5 sm:ml-auto">
@@ -228,8 +257,14 @@ export default function Dashboard() {
         </div>
 
         {hasActiveFilters && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            <span>ⓘ Los filtros aplican a las tablas y rankings de productos/categorías. Los KPIs totales y gráficos de tendencia muestran datos del rango sin filtrar.</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>Filtros activos:</span>
+            {[...appliedCats].map((c) => (
+              <span key={`c-${c}`} className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">📁 {c}</span>
+            ))}
+            {[...appliedProds].map((p) => (
+              <span key={`p-${p}`} className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">📦 {p}</span>
+            ))}
           </div>
         )}
 
@@ -503,19 +538,17 @@ export default function Dashboard() {
         {kpis && !loading && tab === "productos" && (() => {
           const prodFiltered = [...kpis.top_products]
             .filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase()))
-            .filter((p) => selectedProds.size === 0 || selectedProds.has(p.name))
             .sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const catFiltered = [...kpis.categories]
             .filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase()))
-            .filter((c) => selectedCats.size === 0 || selectedCats.has(c.category))
             .sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const EXCLUDED_CATS = ["GASTRONOMICA TUPUNGATO SPA", "COMPLETOS"];
           const slowCats = [...new Set(slowMovers.map((s) => s.category).filter((c) => c && !EXCLUDED_CATS.includes(c)))].sort();
           const slowFiltered = slowMovers
             .filter((s) => !EXCLUDED_CATS.includes(s.category))
             .filter((s) => slowCat === "todas" || s.category === slowCat)
-            .filter((s) => selectedCats.size === 0 || selectedCats.has(s.category))
-            .filter((s) => selectedProds.size === 0 || selectedProds.has(s.name));
+            .filter((s) => appliedCats.size === 0 || appliedCats.has(s.category))
+            .filter((s) => appliedProds.size === 0 || appliedProds.has(s.name));
           return (
             <>
               <Card className="mt-6" title="Productos con stock sin venta">
