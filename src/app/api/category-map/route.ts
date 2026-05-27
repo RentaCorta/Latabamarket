@@ -1,21 +1,19 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 
-// GET — devuelve mapeos + categorías (desde products) + proveedores (desde purchases)
+// GET — devuelve mapeos + categorías + proveedores (todo distinct desde RPC)
 export async function GET() {
   const [mapRes, catRes, provRes] = await Promise.all([
     supabase.from("category_provider_map").select("*").order("category_name"),
-    supabase.from("products").select("category_name").not("category_name", "is", null),
-    supabase.from("purchases").select("provider_name").not("provider_name", "is", null),
+    supabase.rpc("list_product_categories"),
+    supabase.rpc("list_purchase_providers"),
   ]);
   if (mapRes.error) return NextResponse.json({ ok: false, error: mapRes.error.message }, { status: 500 });
   if (catRes.error) return NextResponse.json({ ok: false, error: catRes.error.message }, { status: 500 });
   if (provRes.error) return NextResponse.json({ ok: false, error: provRes.error.message }, { status: 500 });
 
-  const categories = [...new Set((catRes.data ?? []).map((r: { category_name: string }) => r.category_name).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "es"));
-  const providers = [...new Set((provRes.data ?? []).map((r: { provider_name: string }) => r.provider_name).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "es"));
+  const categories = (catRes.data ?? []).map((r: { category_name: string }) => r.category_name);
+  const providers = (provRes.data ?? []).map((r: { provider_name: string }) => r.provider_name);
 
   return NextResponse.json({ ok: true, mappings: mapRes.data, categories, providers });
 }
