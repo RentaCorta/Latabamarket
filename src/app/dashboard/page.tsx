@@ -85,6 +85,10 @@ export default function Dashboard() {
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCats, setSelectedCats] = useState<Set<string>>(new Set());
+  const [selectedProds, setSelectedProds] = useState<Set<string>>(new Set());
+  const [catFilterOpen, setCatFilterOpen] = useState(false);
+  const [prodFilterOpen, setProdFilterOpen] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -105,6 +109,26 @@ export default function Dashboard() {
   const applyPreset = (p: string) => { setPreset(p); setRange(presetRange(p)); };
   const applyCustom = (field: "from" | "to", v: string) => { setPreset("custom"); setRange((r) => ({ ...r, [field]: v })); };
   const delta = (cur: unknown, prev: unknown) => { const a = Number(cur), b = Number(prev); return b > 0 ? ((a - b) / b) * 100 : null; };
+
+  // Exporta cualquier arreglo de objetos a un archivo Excel.
+  const exportToExcel = (rows: Record<string, unknown>[], sheetName: string, fileName: string) => {
+    if (!rows.length) return;
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 30));
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
+  };
+
+  // Toggle helper para multi-selección
+  const toggleSetItem = (setter: (fn: (s: Set<string>) => Set<string>) => void, item: string) => {
+    setter((prev) => {
+      const next = new Set(prev);
+      if (next.has(item)) next.delete(item); else next.add(item);
+      return next;
+    });
+  };
+
+  const hasActiveFilters = selectedCats.size > 0 || selectedProds.size > 0;
 
   const exportServiceExcel = () => {
     if (!kpis) return;
@@ -171,6 +195,28 @@ export default function Dashboard() {
             <span className="text-slate-400">→</span>
             <input type="date" value={range.to} onChange={(e) => applyCustom("to", e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5" />
           </div>
+          {kpis && (
+            <>
+              <MultiFilter
+                label="Categorías"
+                options={[...new Set(kpis.categories.map((c) => c.category).filter(Boolean))].sort()}
+                selected={selectedCats}
+                onToggle={(v) => toggleSetItem(setSelectedCats, v)}
+                onClear={() => setSelectedCats(new Set())}
+                open={catFilterOpen}
+                setOpen={setCatFilterOpen}
+              />
+              <MultiFilter
+                label="Productos"
+                options={[...new Set(kpis.top_products.map((p) => p.name).filter(Boolean))].sort()}
+                selected={selectedProds}
+                onToggle={(v) => toggleSetItem(setSelectedProds, v)}
+                onClear={() => setSelectedProds(new Set())}
+                open={prodFilterOpen}
+                setOpen={setProdFilterOpen}
+              />
+            </>
+          )}
           {tab !== "compras" && (
             <div className="flex gap-1.5 sm:ml-auto">
               {[["all", "Todo el día"], ["manana", "Mañana"], ["tarde", "Tarde"]].map(([k, l]) => (
@@ -180,6 +226,12 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {hasActiveFilters && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <span>ⓘ Los filtros aplican a las tablas y rankings de productos/categorías. Los KPIs totales y gráficos de tendencia muestran datos del rango sin filtrar.</span>
+          </div>
+        )}
 
         {error && <div className="mt-6 rounded-xl bg-rose-50 p-4 text-rose-700">Error: {error}</div>}
         {loading && <div className="mt-6 text-slate-400">Cargando…</div>}
@@ -275,7 +327,12 @@ export default function Dashboard() {
                 })()}
               </Card>
 
-              <Card title="Ventas por vendedor">
+              <Card title="Ventas por vendedor" action={
+                <button onClick={() => exportToExcel(
+                  kpis.sellers.map((s) => ({ Vendedor: s.seller, Total: Number(s.total), Transacciones: Number(s.transactions) })),
+                  "Vendedores", `vendedores-${kpis.range.from}-a-${kpis.range.to}`
+                )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+              }>
                 {(() => {
                   const max = Math.max(...kpis.sellers.map((s) => Number(s.total)), 1);
                   return (
@@ -357,7 +414,28 @@ export default function Dashboard() {
             </Card>
 
             <Card className="mt-4" title="Ventas por semana y día"
-              action={<Toggle value={dowMetric} onChange={(v) => setDowMetric(v as "total" | "neto")} options={[["total", "Ventas"], ["neto", "Venta neta"]]} />}>
+              action={
+                <div className="flex items-center gap-2">
+                  <button onClick={() => {
+                    const DOW = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+                    const rows: Record<string, number[]> = {};
+                    for (const d of kpis.daily) {
+                      const { weekKey, dow } = weekInfo(d.day);
+                      if (!rows[weekKey]) rows[weekKey] = [0, 0, 0, 0, 0, 0, 0];
+                      rows[weekKey][dow] += Number(dowMetric === "neto" ? d.neto : d.total);
+                    }
+                    const keys = Object.keys(rows).sort();
+                    const out = keys.map((w) => {
+                      const r: Record<string, unknown> = { Semana: `Sem. ${w.slice(5)}` };
+                      DOW.forEach((d, i) => { r[d] = rows[w][i]; });
+                      r["Total"] = rows[w].reduce((a, b) => a + b, 0);
+                      return r;
+                    });
+                    exportToExcel(out, "Ventas semana-dia", `ventas-semana-dia-${kpis.range.from}-a-${kpis.range.to}`);
+                  }} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                  <Toggle value={dowMetric} onChange={(v) => setDowMetric(v as "total" | "neto")} options={[["total", "Ventas"], ["neto", "Venta neta"]]} />
+                </div>
+              }>
               <p className="mb-3 text-xs text-slate-500">Cada fila es una semana; las columnas son los días, para comparar el mismo día entre semanas.</p>
               {(() => {
                 const DOW = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -423,11 +501,21 @@ export default function Dashboard() {
 
         {/* ===== PESTAÑA PRODUCTOS Y CATEGORÍAS ===== */}
         {kpis && !loading && tab === "productos" && (() => {
-          const prodFiltered = [...kpis.top_products].filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
-          const catFiltered = [...kpis.categories].filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase())).sort((a, b) => Number(b.revenue) - Number(a.revenue));
+          const prodFiltered = [...kpis.top_products]
+            .filter((p) => p.name.toLowerCase().includes(prodSearch.toLowerCase()))
+            .filter((p) => selectedProds.size === 0 || selectedProds.has(p.name))
+            .sort((a, b) => Number(b.revenue) - Number(a.revenue));
+          const catFiltered = [...kpis.categories]
+            .filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase()))
+            .filter((c) => selectedCats.size === 0 || selectedCats.has(c.category))
+            .sort((a, b) => Number(b.revenue) - Number(a.revenue));
           const EXCLUDED_CATS = ["GASTRONOMICA TUPUNGATO SPA", "COMPLETOS"];
           const slowCats = [...new Set(slowMovers.map((s) => s.category).filter((c) => c && !EXCLUDED_CATS.includes(c)))].sort();
-          const slowFiltered = slowMovers.filter((s) => !EXCLUDED_CATS.includes(s.category) && (slowCat === "todas" || s.category === slowCat));
+          const slowFiltered = slowMovers
+            .filter((s) => !EXCLUDED_CATS.includes(s.category))
+            .filter((s) => slowCat === "todas" || s.category === slowCat)
+            .filter((s) => selectedCats.size === 0 || selectedCats.has(s.category))
+            .filter((s) => selectedProds.size === 0 || selectedProds.has(s.name));
           return (
             <>
               <Card className="mt-6" title="Productos con stock sin venta">
@@ -476,7 +564,15 @@ export default function Dashboard() {
 
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <Card title={`Productos vendidos (${prodFiltered.length})`}
-                  action={<input value={prodSearchInput} onChange={(e) => handleProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  action={
+                    <div className="flex items-center gap-2">
+                      <input value={prodSearchInput} onChange={(e) => handleProdSearch(e.target.value)} placeholder="Buscar producto…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />
+                      <button onClick={() => exportToExcel(
+                        prodFiltered.map((p) => ({ Producto: p.name, Cantidad: Number(p.units), Monto: Number(p.revenue) })),
+                        "Productos", `productos-${kpis.range.from}-a-${kpis.range.to}`
+                      )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                    </div>
+                  }>
                   <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
@@ -500,7 +596,15 @@ export default function Dashboard() {
                 </Card>
 
                 <Card title={`Categorías (${catFiltered.length})`}
-                  action={<input value={catSearchInput} onChange={(e) => handleCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />}>
+                  action={
+                    <div className="flex items-center gap-2">
+                      <input value={catSearchInput} onChange={(e) => handleCatSearch(e.target.value)} placeholder="Buscar categoría…" className="w-36 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs sm:w-40" />
+                      <button onClick={() => exportToExcel(
+                        catFiltered.map((c) => ({ "Categoría": c.category, Cantidad: Number(c.units), Monto: Number(c.revenue) })),
+                        "Categorias", `categorias-${kpis.range.from}-a-${kpis.range.to}`
+                      )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                    </div>
+                  }>
                   <div className="max-h-[560px] overflow-auto">
                     <table className="w-full text-sm">
                       <thead className="sticky top-0 bg-white">
@@ -554,7 +658,18 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </Card>
 
-              <Card className="mt-4" title={`Compras por proveedor (${kpis.purchases_by_provider.length})`}>
+              <Card className="mt-4" title={`Compras por proveedor (${kpis.purchases_by_provider.length})`}
+                action={
+                  <button onClick={() => exportToExcel(
+                    kpis.purchases_by_provider.map((p) => ({
+                      Proveedor: p.provider,
+                      "N° docs": Number(p.docs),
+                      "Comprado (neto)": Number(p.neto),
+                      "Vendido (neto + exento)": p.sales_neto != null ? Number(p.sales_neto) : 0,
+                    })),
+                    "Compras por proveedor", `compras-proveedor-${kpis.range.from}-a-${kpis.range.to}`
+                  )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                }>
                 <div className="max-h-[460px] overflow-auto">
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-white">
@@ -622,6 +737,54 @@ function Toggle({ value, onChange, options }: { value: string; onChange: (v: str
       {options.map(([k, l]) => (
         <button key={k} onClick={() => onChange(k)} className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${value === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>{l}</button>
       ))}
+    </div>
+  );
+}
+
+function MultiFilter({ label, options, selected, onToggle, onClear, open, setOpen }:
+  { label: string; options: string[]; selected: Set<string>; onToggle: (v: string) => void; onClear: () => void;
+    open: boolean; setOpen: (b: boolean) => void }) {
+  const [search, setSearch] = useState("");
+  const filtered = options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${selected.size > 0 ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100"}`}
+      >
+        {label}
+        {selected.size > 0 && <span className="ml-1 rounded-full bg-indigo-600 px-1.5 text-xs text-white">{selected.size}</span>}
+        <span className="text-xs">▾</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
+            <div className="flex items-center gap-2 px-1 pb-2">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar…"
+                className="w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+              />
+              {selected.size > 0 && (
+                <button onClick={onClear} className="text-xs text-slate-400 hover:text-rose-600">Limpiar</button>
+              )}
+            </div>
+            <div className="max-h-64 overflow-auto">
+              {filtered.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-slate-400">Sin resultados</p>
+              ) : filtered.map((o) => (
+                <label key={o} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-slate-50">
+                  <input type="checkbox" checked={selected.has(o)} onChange={() => onToggle(o)} className="rounded" />
+                  <span className="flex-1 truncate" title={o}>{o}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
