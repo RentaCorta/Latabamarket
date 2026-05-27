@@ -5,83 +5,10 @@ import { useEffect, useState } from "react";
 type Mapping = { category_name: string; provider_name: string | null };
 type SaveState = "idle" | "saving" | "ok" | "error";
 
-const PROVIDERS = [
-  "AGROSUPER COMERCIALIZADORA DE ALIMENTOS LTDA.",
-  "Almacen San José SpA",
-  "BIDFOOD CHILE S.A.",
-  "BUK SPA",
-  "COMERCIAL BLM SPA",
-  "COMERCIAL CCU S.A.",
-  "COMERCIAL LA FRANCESA SPA",
-  "COMERCIAL TRAPANANDA SPA",
-  "CONSORCIO INDUSTRIAL DE ALIMENTOS S.A.",
-  "COOPERATIVA AGRICOLA Y LECHERA DE LA UNION LTDA.",
-  "DISEÑO MATIAS IGNACIO QUEZADA TORRES E.I.R.L.",
-  "DISTRIBUIDORA DE ALIMENTOS ELPAC LIMITADA",
-  "DISTRIBUIDORA HIMAX LIMITADA",
-  "DISTRIBUIDORA LOS TEROS SPA",
-  "DISTRIBUIDORA Y COMERCIAL DIMAK LIMITADA",
-  "DUAL SOLUCIONES SPA",
-  "Embotelladora Andina S.A.",
-  "Empresa Eléctrica de Aysén S.A.",
-  "Envasadora Aysén ltda",
-  "Espol S.A.",
-  "FERRETERIA Y MERCERIA SLAKO ZUÑÍGA SPA",
-  "FOTOGRAFICA COYHAIQUE LIMITADA",
-  "Fabrica de Bandejas Limitada",
-  "GTD MANQUEHUE SA",
-  "LA TRANQUERA SPA",
-  "MYRIAM DEL CARMEN ADRIAZOLA GONGORA",
-  "MercadoLibre Chile LTDA",
-  "SOC DE INVERSIONES CORDILLERA LIMITADA",
-  "SOCIEDAD COMERCIAL MULTIMIX LIMITADA",
-  "SODIMAC S.A.",
-  "Servicios Informáticos Relke SpA",
-  "TONY GALLO SPA",
-  "TRANSPORTES NAVIA AGUILAR MILLAPEL E.I.R.L.",
-  "UOVA SPA",
-  // Desde categorías de productos
-  "AGROINDUSTRIA AYC SPA",
-  "AGROSUPER",
-  "ALIMENTOS DESHIDRATADOS VICTOR MANUEL ACEVEDO",
-  "ANDINA",
-  "BIDFOOD",
-  "BLM",
-  "CCU",
-  "CIAL",
-  "COLUN",
-  "COMERCIAL EL CAPON LTDA.",
-  "COMERCIAL GLORIA PATRICIA CARE URRUTIA E.I.R.L.",
-  "COMERCIAL LA PALESTINA",
-  "COMERCIAL VALLE PATAGONIA",
-  "COMERCIALIZADORA Y DISTRIB. HENG FA LTDA.",
-  "DIMAK",
-  "DITAB CHILE SPA",
-  "ELPAC",
-  "Envasadora Aysén",
-  "ESPOL",
-  "FOTOGRAFICA COYHAIQUE LTDA.",
-  "GASTRONOMICA GOLOSO LTDA.",
-  "GASTRONOMICA TUPUNGATO SPA",
-  "HIELO AUSTRAL",
-  "HIMAX",
-  "HOME COOKING SPA",
-  "IMP. PROD. Y COMER. DE ENVASES PROD DE EMPAQUE HIG",
-  "INSUMOS PACKAGING",
-  "LA TABA",
-  "Modinger Hermanos Sociedad Anonima",
-  "Multimix",
-  "PF",
-  "SOC. COMERCIAL Y DISTRIBUIDORA HN LTDA.",
-  "TONY GALLO",
-  "Transp Navia Aguilar Millapel E.I.R.L.",
-  "TRAPANANDA",
-].filter((v, i, a) => a.indexOf(v) === i)
- .sort((a, b) => a.localeCompare(b, "es"));
-
 export default function MantenedorPage() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [providers, setProviders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saveState, setSaveState] = useState<Record<string, SaveState>>({});
   const [newCat, setNewCat] = useState("");
@@ -94,8 +21,11 @@ export default function MantenedorPage() {
     fetch("/api/category-map")
       .then((r) => r.json())
       .then((d) => {
-        if (d.ok) { setMappings(d.mappings); setCategories(d.categories ?? []); }
-        else setError(d.error);
+        if (d.ok) {
+          setMappings(d.mappings);
+          setCategories(d.categories ?? []);
+          setProviders(d.providers ?? []);
+        } else setError(d.error);
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -103,9 +33,11 @@ export default function MantenedorPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Categorías sin mapeo aún
   const mappedCats = new Set(mappings.map((m) => m.category_name));
   const availableCats = categories.filter((c) => !mappedCats.has(c));
 
+  // Proveedores ya usados en algún mapeo (excluyendo opcional una categoría)
   const usedProviders = (excludeCat?: string) =>
     new Set(mappings.filter((m) => m.provider_name && m.category_name !== excludeCat).map((m) => m.provider_name as string));
 
@@ -192,7 +124,7 @@ export default function MantenedorPage() {
                       className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none disabled:opacity-50"
                     >
                       <option value="">— Sin asignar —</option>
-                      {PROVIDERS.filter((p) => !used.has(p)).map((p) => (
+                      {providers.filter((p) => !used.has(p)).map((p) => (
                         <option key={p} value={p}>{p}</option>
                       ))}
                       {m.provider_name && used.has(m.provider_name) && (
@@ -240,7 +172,7 @@ export default function MantenedorPage() {
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm focus:border-indigo-400 focus:outline-none"
                   >
                     <option value="">— Sin asignar —</option>
-                    {PROVIDERS.filter((p) => !usedProviders().has(p)).map((p) => (
+                    {providers.filter((p) => !usedProviders().has(p)).map((p) => (
                       <option key={p} value={p}>{p}</option>
                     ))}
                   </select>
@@ -258,7 +190,7 @@ export default function MantenedorPage() {
         </div>
 
         <p className="mt-4 text-xs text-slate-400">
-          💡 Las categorías se cargan desde los productos del sistema. Si falta un proveedor en la lista, avisa para agregarlo.
+          💡 Las categorías se cargan desde los productos del sistema y los proveedores desde las compras registradas. Ambas listas se actualizan automáticamente.
         </p>
       </div>
     </main>
