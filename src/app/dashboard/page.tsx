@@ -53,6 +53,8 @@ function weekInfo(ymd: string) {
 const C = { indigo: "#4f46e5", emerald: "#10b981", amber: "#f59e0b", slate: "#cbd5e1" };
 const MIX: Record<string, string> = { Servicio: "#4f46e5", "Café": "#f59e0b", Retail: "#94a3b8" };
 
+const EXCLUDED_SLOW_CATS = ["GASTRONOMICA TUPUNGATO SPA", "COMPLETOS", "CAFÉ"];
+
 export default function Dashboard() {
   const [tab, setTab] = useState("general");
   const [preset, setPreset] = useState("mes");
@@ -173,7 +175,11 @@ export default function Dashboard() {
   };
 
   const exportSlowExcel = () => {
-    const filtered = slowMovers.filter((s) => slowCat === "todas" || s.category === slowCat);
+    const filtered = slowMovers
+      .filter((s) => !EXCLUDED_SLOW_CATS.includes(s.category))
+      .filter((s) => slowCat === "todas" || s.category === slowCat)
+      .filter((s) => appliedCats.size === 0 || appliedCats.has(s.category))
+      .filter((s) => appliedProds.size === 0 || appliedProds.has(s.name));
     const rows = filtered.map((s) => ({
       Producto: s.name, "Categoría": s.category, Stock: Number(s.stock),
       "Última venta": s.last_sold, "Días sin vender": Number(s.days_since),
@@ -280,6 +286,7 @@ export default function Dashboard() {
             <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4">
               <Kpi title="Ventas" value={clp(kpis.summary.total)} delta={delta(kpis.summary.total, kpis.prev_summary?.total)} />
               <Kpi title="Venta neta + Exenta" value={clp(kpis.summary.neto)} delta={delta(kpis.summary.neto, kpis.prev_summary?.neto)} />
+              <Kpi title="Venta neta" value={clp(Number(kpis.summary.neto) - Number(kpis.summary.exempt))} delta={delta(Number(kpis.summary.neto) - Number(kpis.summary.exempt), kpis.prev_summary ? Number(kpis.prev_summary.neto) - Number(kpis.prev_summary.exempt) : undefined)} />
               <Kpi title="Venta exenta" value={clp(kpis.summary.exempt)} delta={delta(kpis.summary.exempt, kpis.prev_summary?.exempt)} />
               <Kpi title="Costo total productos" value={clp(kpis.summary.cost)} delta={delta(kpis.summary.cost, kpis.prev_summary?.cost)} />
               <Kpi title="Utilidad" value={clp(kpis.summary.profit)} delta={delta(kpis.summary.profit, kpis.prev_summary?.profit)}
@@ -312,11 +319,13 @@ export default function Dashboard() {
 
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
               <Card title="Productos más vendidos" action={<Toggle value={prodMetric} onChange={(v) => setProdMetric(v as "revenue" | "units")} options={[["revenue", "Ingreso"], ["units", "Cantidad"]]} />}>
-                <ResponsiveContainer width="100%" height={340}>
-                  <BarChart layout="vertical" margin={{ left: 8 }}
+                <ResponsiveContainer width="100%" height={420}>
+                  <BarChart layout="vertical" margin={{ left: 8, right: 16 }} barCategoryGap={8}
                     data={[...kpis.top_products].sort((a, b) => Number(b[prodMetric]) - Number(a[prodMetric])).slice(0, 10).map((p) => ({ name: p.name, val: Number(p[prodMetric]) }))}>
                     <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={(v) => prodMetric === "revenue" ? `$${Math.round(v / 1000)}K` : num(v)} />
-                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" width={170} interval={0}
+                      tick={{ fontSize: 11, fill: "#475569" }} axisLine={false} tickLine={false}
+                      tickFormatter={(v: string) => v.length > 26 ? v.slice(0, 25) + "…" : v} />
                     <Tooltip formatter={(v) => prodMetric === "revenue" ? clp(v) : num(v)} />
                     <Bar dataKey="val" fill={C.emerald} radius={[0, 4, 4, 0]} />
                   </BarChart>
@@ -545,10 +554,9 @@ export default function Dashboard() {
           const catFiltered = [...kpis.categories]
             .filter((c) => c.category.toLowerCase().includes(catSearch.toLowerCase()))
             .sort((a, b) => Number(b.revenue) - Number(a.revenue));
-          const EXCLUDED_CATS = ["GASTRONOMICA TUPUNGATO SPA", "COMPLETOS"];
-          const slowCats = [...new Set(slowMovers.map((s) => s.category).filter((c) => c && !EXCLUDED_CATS.includes(c)))].sort();
+          const slowCats = [...new Set(slowMovers.map((s) => s.category).filter((c) => c && !EXCLUDED_SLOW_CATS.includes(c)))].sort();
           const slowFiltered = slowMovers
-            .filter((s) => !EXCLUDED_CATS.includes(s.category))
+            .filter((s) => !EXCLUDED_SLOW_CATS.includes(s.category))
             .filter((s) => slowCat === "todas" || s.category === slowCat)
             .filter((s) => appliedCats.size === 0 || appliedCats.has(s.category))
             .filter((s) => appliedProds.size === 0 || appliedProds.has(s.name));
