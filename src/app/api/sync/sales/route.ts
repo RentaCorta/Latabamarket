@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPES = [39, 41]; // 39 = boleta afecta, 41 = boleta exenta
+// 39 = boleta afecta, 41 = boleta exenta, 33 = factura electrónica
+const TYPES = [39, 41, 33];
 const DAYS = 90;
 
 export async function GET() {
@@ -27,6 +28,12 @@ export async function GET() {
           issued_date: d.start_date, sold_at: d.created_at,
           amount_total: d.amount_total, amount_neto: d.amount_neto,
           amount_iva: d.amount_iva, amount_exempt: d.amount_exempt,
+          // Montos reales (con devoluciones / notas de crédito descontadas).
+          // Si la API no los trae, caemos al monto original.
+          real_amount_total: d.real_amount_total ?? d.amount_total,
+          real_amount_neto: d.real_amount_neto ?? d.amount_neto,
+          real_amount_iva: d.real_amount_iva ?? d.amount_iva,
+          real_amount_exempt: d.real_amount_exempt ?? d.amount_exempt,
           branch_id: d.branch_id, seller_id: d.seller_id,
         });
       }
