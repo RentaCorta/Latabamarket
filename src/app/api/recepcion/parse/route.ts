@@ -30,9 +30,6 @@ export async function POST(req: NextRequest) {
 
     const form = new FormData();
     form.append("file", file);
-    form.append("structure", "true");
-
-    console.log("[parse] Llamando a EasyOCR...");
 
     const res = await fetch("https://app.easyocr.es/api/v1/ocr/file", {
       method: "POST",
@@ -53,26 +50,27 @@ export async function POST(req: NextRequest) {
     const raw = await res.json();
     console.log("[parse] EasyOCR raw:", JSON.stringify(raw).slice(0, 1000));
 
-    const structured = raw.structured_data ?? raw;
+    // La respuesta viene en raw.data.structured_data
+    const sd = raw.data?.structured_data ?? {};
 
     const data = {
-      proveedor: structured.supplier?.name ?? "",
-      rut_proveedor: structured.supplier?.tax_id ?? "",
-      folio: structured.document_number ?? "",
-      fecha: structured.issue_date ?? "",
-      subtotal: structured.totals?.subtotal ?? 0,
-      iva: structured.totals?.tax ?? 0,
-      total: structured.totals?.total ?? 0,
-      lineas: (structured.items ?? []).map((item: {
-        description: string;
-        quantity: number;
-        unit_price: number;
-        total: number;
+      proveedor: sd.vendor ?? sd.supplier ?? sd.proveedor ?? "",
+      rut_proveedor: sd.vendor_tax_id ?? sd.tax_id ?? sd.rut ?? "",
+      folio: sd.invoice_number ?? sd.folio ?? sd.document_number ?? "",
+      fecha: sd.date ?? sd.fecha ?? sd.issue_date ?? "",
+      subtotal: sd.subtotal ?? sd.net_amount ?? 0,
+      iva: sd.tax ?? sd.iva ?? sd.vat ?? 0,
+      total: sd.total ?? 0,
+      lineas: (sd.items ?? sd.line_items ?? sd.lineas ?? []).map((item: {
+        description?: string; name?: string;
+        quantity?: number; qty?: number;
+        unit_price?: number; price?: number;
+        total?: number; amount?: number;
       }) => ({
-        descripcion: item.description ?? "",
-        cantidad: item.quantity ?? 1,
-        precio_unitario: item.unit_price ?? 0,
-        total_linea: item.total ?? 0,
+        descripcion: item.description ?? item.name ?? "",
+        cantidad: item.quantity ?? item.qty ?? 1,
+        precio_unitario: item.unit_price ?? item.price ?? 0,
+        total_linea: item.total ?? item.amount ?? 0,
       })),
     };
 
