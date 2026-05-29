@@ -26,7 +26,17 @@ export async function GET() {
 
     while (!stop) {
       const data = await relbaseFetch(`/dtes?type_document=${type}&per_page=50&page=${page}`);
+
+      // 👇 LOGS DE DEBUG
+      console.log(`[sync] type=${type} page=${page} raw:`, JSON.stringify(data).slice(0, 800));
       const dtes: Dte[] = data?.data?.dtes ?? [];
+      console.log(`[sync] DTEs encontrados:`, dtes.length);
+      if (dtes.length > 0) {
+        console.log(`[sync] Primer DTE created_at:`, dtes[0].created_at);
+        console.log(`[sync] Último DTE created_at:`, dtes[dtes.length - 1].created_at);
+      }
+      // 👆 FIN LOGS DE DEBUG
+
       if (dtes.length === 0) break;
 
       for (const d of dtes) {
