@@ -4,8 +4,8 @@ import { supabase } from "@/lib/supabase";
 
 // 39 = boleta afecta, 41 = boleta exenta, 33 = factura electrónica
 const TYPES = [39, 41, 33];
-// Reprocesa los últimos N días para capturar cambios (devoluciones, NC, pagos)
-const LOOKBACK_DAYS = 7;
+// Solo últimas 24h, el cron corre cada 5 min así que no necesita más
+const LOOKBACK_DAYS = 1;
 
 interface Dte {
   id: number; folio: number; type_document: number; type_document_name: string;
@@ -26,16 +26,7 @@ export async function GET() {
 
     while (!stop) {
       const data = await relbaseFetch(`/dtes?type_document=${type}&per_page=50&page=${page}`);
-
-      // 👇 LOGS DE DEBUG
-      console.log(`[sync] type=${type} page=${page} raw:`, JSON.stringify(data).slice(0, 800));
       const dtes: Dte[] = data?.data?.dtes ?? [];
-      console.log(`[sync] DTEs encontrados:`, dtes.length);
-      if (dtes.length > 0) {
-        console.log(`[sync] Primer DTE created_at:`, dtes[0].created_at);
-        console.log(`[sync] Último DTE created_at:`, dtes[dtes.length - 1].created_at);
-      }
-      // 👆 FIN LOGS DE DEBUG
 
       if (dtes.length === 0) break;
 
@@ -72,13 +63,14 @@ export async function GET() {
           })));
         }
         processed++;
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 100)); // reducido de 200ms
       }
 
       const nextPage = data?.meta?.next_page;
       if (stop || !nextPage || nextPage === -1) break;
+      if (page >= 3) break; // máximo 3 páginas por tipo para evitar timeout
       page = nextPage;
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 100)); // reducido de 250ms
     }
   }
 
