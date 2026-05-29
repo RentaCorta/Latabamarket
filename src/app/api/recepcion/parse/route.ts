@@ -27,9 +27,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No hay API key configurada" }, { status: 500 });
     }
 
+    console.log("[parse] Usando key index:", new Date().getDate() % EASYOCR_KEYS.length);
+    console.log("[parse] Archivo:", file.name, file.type, file.size);
+
     // Enviar a EasyOCR
     const form = new FormData();
     form.append("file", file);
+
+    console.log("[parse] Llamando a EasyOCR...");
 
     const res = await fetch("https://api.easyocr.es/v1/extract", {
       method: "POST",
@@ -39,8 +44,11 @@ export async function POST(req: NextRequest) {
       body: form,
     });
 
+    console.log("[parse] EasyOCR status:", res.status);
+
     if (!res.ok) {
       const detail = await res.text();
+      console.error("[parse] EasyOCR error:", detail);
       return NextResponse.json({ error: `EasyOCR error ${res.status}: ${detail}` }, { status: 500 });
     }
 
@@ -70,8 +78,10 @@ export async function POST(req: NextRequest) {
     };
 
     return NextResponse.json({ ok: true, data });
+
   } catch (err) {
-    console.error("[parse] error:", err);
-    return NextResponse.json({ error: "Error procesando archivo" }, { status: 500 });
+    console.error("[parse] error detalle:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: "Error procesando archivo", detalle: message }, { status: 500 });
   }
 }
