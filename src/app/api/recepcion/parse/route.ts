@@ -26,15 +26,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No hay API key configurada" }, { status: 500 });
     }
 
-    console.log("[parse] Usando key index:", new Date().getDate() % EASYOCR_KEYS.length);
     console.log("[parse] Archivo:", file.name, file.type, file.size);
 
     const form = new FormData();
     form.append("file", file);
+    form.append("structure", "true");
 
     console.log("[parse] Llamando a EasyOCR...");
 
-    const res = await fetch("https://easyocr.es/api/v1/ocr/file", {
+    const res = await fetch("https://app.easyocr.es/api/v1/ocr/file", {
       method: "POST",
       headers: {
         "X-API-Key": apiKey,
@@ -53,15 +53,17 @@ export async function POST(req: NextRequest) {
     const raw = await res.json();
     console.log("[parse] EasyOCR raw:", JSON.stringify(raw).slice(0, 1000));
 
+    const structured = raw.structured_data ?? raw;
+
     const data = {
-      proveedor: raw.supplier?.name ?? raw.structured_data?.supplier?.name ?? "",
-      rut_proveedor: raw.supplier?.tax_id ?? raw.structured_data?.supplier?.tax_id ?? "",
-      folio: raw.document_number ?? raw.structured_data?.document_number ?? "",
-      fecha: raw.issue_date ?? raw.structured_data?.issue_date ?? "",
-      subtotal: raw.totals?.subtotal ?? raw.structured_data?.totals?.subtotal ?? 0,
-      iva: raw.totals?.tax ?? raw.structured_data?.totals?.tax ?? 0,
-      total: raw.totals?.total ?? raw.structured_data?.totals?.total ?? 0,
-      lineas: (raw.items ?? raw.structured_data?.items ?? []).map((item: {
+      proveedor: structured.supplier?.name ?? "",
+      rut_proveedor: structured.supplier?.tax_id ?? "",
+      folio: structured.document_number ?? "",
+      fecha: structured.issue_date ?? "",
+      subtotal: structured.totals?.subtotal ?? 0,
+      iva: structured.totals?.tax ?? 0,
+      total: structured.totals?.total ?? 0,
+      lineas: (structured.items ?? []).map((item: {
         description: string;
         quantity: number;
         unit_price: number;
