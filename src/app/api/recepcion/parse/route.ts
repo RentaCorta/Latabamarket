@@ -7,7 +7,6 @@ const EASYOCR_KEYS = [
   process.env.EASYOCR_KEY_4,
 ].filter(Boolean) as string[];
 
-// Rota entre las keys disponibles según el día del mes
 function getApiKey(): string {
   const keyIndex = new Date().getDate() % EASYOCR_KEYS.length;
   return EASYOCR_KEYS[keyIndex];
@@ -30,16 +29,15 @@ export async function POST(req: NextRequest) {
     console.log("[parse] Usando key index:", new Date().getDate() % EASYOCR_KEYS.length);
     console.log("[parse] Archivo:", file.name, file.type, file.size);
 
-    // Enviar a EasyOCR
     const form = new FormData();
     form.append("file", file);
 
     console.log("[parse] Llamando a EasyOCR...");
 
-    const res = await fetch("https://api.easyocr.es/v1/extract", {
+    const res = await fetch("https://easyocr.es/api/v1/ocr/file", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "X-API-Key": apiKey,
       },
       body: form,
     });
@@ -55,7 +53,6 @@ export async function POST(req: NextRequest) {
     const raw = await res.json();
     console.log("[parse] EasyOCR raw:", JSON.stringify(raw).slice(0, 1000));
 
-    // Mapear respuesta de EasyOCR a nuestro formato
     const data = {
       proveedor: raw.supplier?.name ?? raw.structured_data?.supplier?.name ?? "",
       rut_proveedor: raw.supplier?.tax_id ?? raw.structured_data?.supplier?.tax_id ?? "",
