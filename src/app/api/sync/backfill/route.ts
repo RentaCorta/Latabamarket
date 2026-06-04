@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPES = [41, 33]; // solo exentas y facturas, que son las que faltan
-const LOOKBACK_DAYS = 35; // todo el mes y un poco más
+const TYPES = [41, 33];
+const LOOKBACK_DAYS = 35;
+const MAX_PAGES = 10; // límite de seguridad
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -14,18 +15,19 @@ export async function GET(request: Request) {
   const since = new Date();
   since.setDate(since.getDate() - LOOKBACK_DAYS);
   let processed = 0;
+  const debug: Record<string, number> = {};
 
   for (const type of TYPES) {
     let page = 1;
-    let stop = false;
 
-    while (!stop) {
+    while (page <= MAX_PAGES) {
       const data = await relbaseFetch(`/dtes?type_document=${type}&per_page=50&page=${page}`);
       const dtes = data?.data?.dtes ?? [];
       if (dtes.length === 0) break;
 
       for (const d of dtes) {
-        if (new Date(d.created_at) < since) { stop = true; break; }
+        // NO cortamos, solo saltamos los que están fuera del rango
+        if (new Date(d.created_at) < since) continue;
 
         await supabase.from("sales").upsert({
           id: d.id, folio: d.folio, type_document: d.type_document,
@@ -51,15 +53,16 @@ export async function GET(request: Request) {
           })));
         }
         processed++;
-        await new Promise((r) => setTimeout(r, 100));
+        debug[`tipo_${type}`] = (debug[`tipo_${type}`] ?? 0) + 1;
+        await new Promise((r) => setTimeout(r, 80));
       }
 
       const nextPage = data?.meta?.next_page;
-      if (stop || !nextPage || nextPage === -1) break;
+      if (!nextPage || nextPage === -1) break;
       page = nextPage;
-      await new Promise((r) => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 80));
     }
   }
 
-  return NextResponse.json({ ok: true, processed });
+  return NextResponse.json({ ok: true, processed, debug });
 }
