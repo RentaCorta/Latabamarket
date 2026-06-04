@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPES = [39, 41, 33]; // agregamos facturas electrónicas
-const LOOKBACK_DAYS = 2; // reprocesa últimos 2 días para capturar cambios
+const TYPES = [39, 41, 33];
+const LOOKBACK_DAYS = 2;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -28,6 +28,14 @@ export async function GET(request: Request) {
 
       for (const d of dtes) {
         if (new Date(d.created_at) < since) { stop = true; break; }
+
+        // 👇 LOG TEMPORAL
+        console.log("[cron] DTE sample:", JSON.stringify({
+          id: d.id,
+          amount_total: d.amount_total,
+          real_amount_total: d.real_amount_total,
+          real_amount_neto: d.real_amount_neto,
+        }));
 
         await supabase.from("sales").upsert({
           id: d.id, folio: d.folio, type_document: d.type_document,
@@ -58,7 +66,7 @@ export async function GET(request: Request) {
 
       const nextPage = data?.meta?.next_page;
       if (stop || !nextPage || nextPage === -1) break;
-      if (page >= 2) break; // máximo 2 páginas por tipo para evitar timeout
+      if (page >= 2) break;
       page = nextPage;
       await new Promise((r) => setTimeout(r, 150));
     }
