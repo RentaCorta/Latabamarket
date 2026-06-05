@@ -10,17 +10,17 @@ export async function GET(request: Request) {
   const foliosBuscados = [232536, 232665];
   let target: any = null;
 
-  // Buscamos en hasta 10 páginas
-  for (let page = 1; page <= 10 && !target; page++) {
+  // Buscamos en hasta 20 páginas (1000 boletas)
+  for (let page = 1; page <= 20 && !target; page++) {
     const list = await relbaseFetch(`/dtes?type_document=39&per_page=50&page=${page}`);
     const dtes = list?.data?.dtes ?? [];
     target = dtes.find((d: any) => foliosBuscados.includes(d.folio));
     if (dtes.length === 0) break;
-    await new Promise((r) => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 100));
   }
 
   if (!target) {
-    return NextResponse.json({ ok: false, error: "No encontré las boletas en las primeras 10 páginas" });
+    return NextResponse.json({ ok: false, error: "No encontré las boletas en las primeras 20 páginas" });
   }
 
   const detail = await relbaseFetch(`/dtes/${target.id}`);
