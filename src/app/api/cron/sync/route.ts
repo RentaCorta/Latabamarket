@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPES = [39, 41, 33, 34]; // 34 = factura exenta (faltaba)
+const TYPES = [39, 41, 33, 34];
 const LOOKBACK_DAYS = 2;
 
 export async function GET(request: Request) {
@@ -25,8 +25,11 @@ export async function GET(request: Request) {
       if (dtes.length === 0) break;
 
       for (const d of dtes) {
-        // Salta los antiguos en vez de cortar (evita perder DTEs intercalados)
         if (new Date(d.created_at) < since) continue;
+
+        // Traemos el detalle SIEMPRE (para items Y para montos reales correctos)
+        const detail = await relbaseFetch(`/dtes/${d.id}`);
+        const det = detail?.data ?? {};
 
         await supabase.from("sales").upsert({
           id: d.id, folio: d.folio, type_document: d.type_document,
@@ -34,16 +37,16 @@ export async function GET(request: Request) {
           issued_date: d.start_date, sold_at: d.created_at,
           amount_total: d.amount_total, amount_neto: d.amount_neto,
           amount_iva: d.amount_iva, amount_exempt: d.amount_exempt,
-          real_amount_total: d.real_amount_total ?? d.amount_total,
-          real_amount_neto: d.real_amount_neto ?? d.amount_neto,
-          real_amount_iva: d.real_amount_iva ?? d.amount_iva,
-          real_amount_exempt: d.real_amount_exempt ?? d.amount_exempt,
+          // Montos REALES desde el detalle (no del listado, que no descuenta devoluciones)
+          real_amount_total: det.real_amount_total ?? d.amount_total,
+          real_amount_neto: det.real_amount_neto ?? d.amount_neto,
+          real_amount_iva: det.real_amount_iva ?? d.amount_iva,
+          real_amount_exempt: det.real_amount_exempt ?? d.amount_exempt,
           branch_id: d.branch_id, seller_id: d.seller_id,
           items_synced: true,
         });
 
-        const detail = await relbaseFetch(`/dtes/${d.id}`);
-        const products = detail?.data?.products ?? [];
+        const products = det.products ?? [];
         await supabase.from("sale_items").delete().eq("sale_id", d.id);
         if (products.length > 0) {
           await supabase.from("sale_items").insert(products.map((p: any) => ({
