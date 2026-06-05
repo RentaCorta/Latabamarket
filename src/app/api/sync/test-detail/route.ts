@@ -7,16 +7,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
   }
 
-  // Buscamos el id de la boleta folio 232536 (la que tiene devolución)
-  const list = await relbaseFetch(`/dtes?type_document=39&per_page=50&page=1`);
-  const dtes = list?.data?.dtes ?? [];
-  const target = dtes.find((d: any) => d.folio === 232536) ?? dtes.find((d: any) => d.folio === 232665);
+  const foliosBuscados = [232536, 232665];
+  let target: any = null;
 
-  if (!target) {
-    return NextResponse.json({ ok: false, error: "No encontré la boleta en la página 1, puede estar más atrás" });
+  // Buscamos en hasta 10 páginas
+  for (let page = 1; page <= 10 && !target; page++) {
+    const list = await relbaseFetch(`/dtes?type_document=39&per_page=50&page=${page}`);
+    const dtes = list?.data?.dtes ?? [];
+    target = dtes.find((d: any) => foliosBuscados.includes(d.folio));
+    if (dtes.length === 0) break;
+    await new Promise((r) => setTimeout(r, 150));
   }
 
-  // Traemos el detalle individual
+  if (!target) {
+    return NextResponse.json({ ok: false, error: "No encontré las boletas en las primeras 10 páginas" });
+  }
+
   const detail = await relbaseFetch(`/dtes/${target.id}`);
 
   return NextResponse.json({
@@ -29,7 +35,6 @@ export async function GET(request: Request) {
     desde_detalle: {
       amount_total: detail?.data?.amount_total,
       real_amount_total: detail?.data?.real_amount_total,
-      // incluimos el objeto completo para inspeccionar todos los campos de monto
       todos_los_campos: detail?.data,
     },
   });
