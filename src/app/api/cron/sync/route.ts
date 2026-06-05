@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { relbaseFetch } from "@/lib/relbase";
 import { supabase } from "@/lib/supabase";
 
-const TYPES = [39, 41, 33];
+const TYPES = [39, 41, 33, 34]; // 34 = factura exenta (faltaba)
 const LOOKBACK_DAYS = 2;
 
 export async function GET(request: Request) {
@@ -13,29 +13,20 @@ export async function GET(request: Request) {
 
   const since = new Date();
   since.setDate(since.getDate() - LOOKBACK_DAYS);
-
   let processed = 0;
 
   for (const type of TYPES) {
     let page = 1;
-    let stop = false;
+    let pagesChecked = 0;
 
-    while (!stop) {
+    while (pagesChecked < 3) {
       const data = await relbaseFetch(`/dtes?type_document=${type}&per_page=50&page=${page}`);
       const dtes = data?.data?.dtes ?? [];
-
       if (dtes.length === 0) break;
 
       for (const d of dtes) {
-        if (new Date(d.created_at) < since) { stop = true; break; }
-
-        // 👇 LOG TEMPORAL
-        console.log("[cron] DTE sample:", JSON.stringify({
-          id: d.id,
-          amount_total: d.amount_total,
-          real_amount_total: d.real_amount_total,
-          real_amount_neto: d.real_amount_neto,
-        }));
+        // Salta los antiguos en vez de cortar (evita perder DTEs intercalados)
+        if (new Date(d.created_at) < since) continue;
 
         await supabase.from("sales").upsert({
           id: d.id, folio: d.folio, type_document: d.type_document,
@@ -61,14 +52,14 @@ export async function GET(request: Request) {
           })));
         }
         processed++;
-        await new Promise((r) => setTimeout(r, 150));
+        await new Promise((r) => setTimeout(r, 120));
       }
 
       const nextPage = data?.meta?.next_page;
-      if (stop || !nextPage || nextPage === -1) break;
-      if (page >= 2) break;
+      if (!nextPage || nextPage === -1) break;
       page = nextPage;
-      await new Promise((r) => setTimeout(r, 150));
+      pagesChecked++;
+      await new Promise((r) => setTimeout(r, 120));
     }
   }
 
