@@ -7,35 +7,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
   }
 
-  const foliosBuscados = [232536, 232665];
-  let target: any = null;
+  const ids = [48297142, 48332990]; // folios 232536 y 232665
+  const resultados = [];
 
-  // Buscamos en hasta 20 páginas (1000 boletas)
-  for (let page = 1; page <= 20 && !target; page++) {
-    const list = await relbaseFetch(`/dtes?type_document=39&per_page=50&page=${page}`);
-    const dtes = list?.data?.dtes ?? [];
-    target = dtes.find((d: any) => foliosBuscados.includes(d.folio));
-    if (dtes.length === 0) break;
-    await new Promise((r) => setTimeout(r, 100));
+  for (const id of ids) {
+    const detail = await relbaseFetch(`/dtes/${id}`);
+    const d = detail?.data;
+    resultados.push({
+      id,
+      folio: d?.folio,
+      amount_total: d?.amount_total,
+      real_amount_total: d?.real_amount_total,
+      real_amount_neto: d?.real_amount_neto,
+      // mostramos todas las claves disponibles para inspeccionar
+      claves_disponibles: d ? Object.keys(d) : [],
+      objeto_completo: d,
+    });
+    await new Promise((r) => setTimeout(r, 150));
   }
 
-  if (!target) {
-    return NextResponse.json({ ok: false, error: "No encontré las boletas en las primeras 20 páginas" });
-  }
-
-  const detail = await relbaseFetch(`/dtes/${target.id}`);
-
-  return NextResponse.json({
-    ok: true,
-    folio: target.folio,
-    desde_listado: {
-      amount_total: target.amount_total,
-      real_amount_total: target.real_amount_total,
-    },
-    desde_detalle: {
-      amount_total: detail?.data?.amount_total,
-      real_amount_total: detail?.data?.real_amount_total,
-      todos_los_campos: detail?.data,
-    },
-  });
+  return NextResponse.json({ ok: true, resultados });
 }
