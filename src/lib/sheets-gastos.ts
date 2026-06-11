@@ -45,7 +45,6 @@ function parseCSV(texto: string): string[][] {
 
 function aNumero(v: string): number {
   if (!v) return 0;
-  // quita puntos de miles, símbolos y espacios; respeta el signo
   const limpio = v.replace(/[^\d-]/g, "");
   return Number(limpio) || 0;
 }
@@ -58,7 +57,6 @@ export async function obtenerGastos(): Promise<Gasto[]> {
   const filas = parseCSV(texto);
   if (filas.length < 2) return [];
 
-  // Mapea encabezados a índices (tolerante a orden y mayúsculas)
   const encabezados = filas[0].map((h) => h.trim().toLowerCase());
   const idx = (nombre: string) => encabezados.indexOf(nombre);
 
@@ -75,7 +73,6 @@ export async function obtenerGastos(): Promise<Gasto[]> {
   const gastos: Gasto[] = [];
   for (let f = 1; f < filas.length; f++) {
     const fila = filas[f];
-    // salta filas vacías
     if (!fila[iNombre] && !fila[iBruto]) continue;
 
     gastos.push({
@@ -93,10 +90,16 @@ export async function obtenerGastos(): Promise<Gasto[]> {
   return gastos;
 }
 
-// Resumen agregado para el dashboard
-export async function resumenGastos(periodo?: string) {
+// Resumen agregado para el dashboard, filtrado por rango de fechas
+export async function resumenGastos(from?: string, to?: string) {
   const todos = await obtenerGastos();
-  const filtrados = periodo ? todos.filter((g) => g.periodo === periodo) : todos;
+
+  const filtrados = todos.filter((g) => {
+    if (!g.fecha) return false;
+    if (from && g.fecha < from) return false;
+    if (to && g.fecha > to) return false;
+    return true;
+  });
 
   const honorarios = filtrados.filter((g) => g.tipo === "honorario");
   const sueldos = filtrados.filter((g) => g.tipo === "sueldo");
@@ -105,7 +108,7 @@ export async function resumenGastos(periodo?: string) {
     arr.reduce((acc, g) => acc + (Number(g[campo]) || 0), 0);
 
   return {
-    periodo: periodo ?? "todos",
+    rango: { from: from ?? null, to: to ?? null },
     honorarios: {
       cantidad: honorarios.length,
       total_bruto: sumar(honorarios, "monto_bruto"),

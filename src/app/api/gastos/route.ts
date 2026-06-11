@@ -4,8 +4,9 @@ import { resumenGastos } from "@/lib/sheets-gastos";
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const periodo = url.searchParams.get("periodo") ?? undefined;
-    const data = await resumenGastos(periodo);
+    const from = url.searchParams.get("from") ?? undefined;
+    const to = url.searchParams.get("to") ?? undefined;
+    const data = await resumenGastos(from, to);
     return NextResponse.json({ ok: true, ...data });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
