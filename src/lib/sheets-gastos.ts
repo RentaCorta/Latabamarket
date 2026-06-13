@@ -49,6 +49,30 @@ function aNumero(v: string): number {
   return Number(limpio) || 0;
 }
 
+// Normaliza una fecha a formato YYYY-MM-DD.
+// Acepta: "2026-05-15", "15-05-2026", "15/05/2026", "5-5-2026"
+function normalizarFecha(v: string): string {
+  const s = (v ?? "").trim();
+  if (!s) return "";
+
+  // Ya viene en formato ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // Separa por - o /
+  const partes = s.split(/[-/]/).map((p) => p.trim());
+  if (partes.length !== 3) return s;
+
+  // Si la primera parte tiene 4 dígitos, es YYYY-MM-DD o YYYY/MM/DD
+  if (partes[0].length === 4) {
+    const [y, m, d] = partes;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // Si no, asumimos DD-MM-YYYY (formato chileno)
+  const [d, m, y] = partes;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
 export async function obtenerGastos(): Promise<Gasto[]> {
   const res = await fetch(CSV_URL, { cache: "no-store" });
   if (!res.ok) throw new Error(`No se pudo leer la hoja: ${res.status}`);
@@ -76,7 +100,7 @@ export async function obtenerGastos(): Promise<Gasto[]> {
     if (!fila[iNombre] && !fila[iBruto]) continue;
 
     gastos.push({
-      fecha: (fila[iFecha] ?? "").trim(),
+      fecha: normalizarFecha(fila[iFecha] ?? ""),
       tipo: (fila[iTipo] ?? "").trim().toLowerCase(),
       rut: (fila[iRut] ?? "").trim(),
       nombre: (fila[iNombre] ?? "").trim(),
