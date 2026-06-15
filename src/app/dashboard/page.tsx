@@ -88,7 +88,7 @@ export default function Dashboard() {
     setProdSearchInput(v);
     if (prodDebounce.current) clearTimeout(prodDebounce.current);
     prodDebounce.current = setTimeout(() => setProdSearch(v), 150);
-  }, []);
+∑X  }, []);
   const handleCatSearch = useCallback((v: string) => {
     setCatSearchInput(v);
     if (catDebounce.current) clearTimeout(catDebounce.current);
@@ -738,8 +738,8 @@ export default function Dashboard() {
 
           // Utilidad = Venta Total − Costo productos − Personal − F29
           const ventaTotal = Number(kpis.summary.total) || 0;
-          const costoProductos = Number(kpis.summary.cost) || 0;
-          const utilidad = ventaTotal - costoProductos - personal - impuestos;
+          const comprasTotal = Number(ps?.purchased_total) || 0;
+          const utilidad = ventaTotal - comprasTotal - personal - impuestos;
           const margenUtilidad = ventaTotal > 0 ? (utilidad / ventaTotal) * 100 : null;
 
           return (
@@ -774,7 +774,7 @@ export default function Dashboard() {
                     </div>
                     <div className="text-xs text-slate-500 sm:text-right">
                       <p>Venta total <span className="font-semibold text-slate-700">{clp(ventaTotal)}</span></p>
-                      <p>− Costo productos <span className="font-semibold text-slate-700">{clp(costoProductos)}</span></p>
+                      <p>− Compras (con IVA) <span className="font-semibold text-slate-700">{clp(comprasTotal)}</span></p>
                       <p>− Personal <span className="font-semibold text-slate-700">{clp(personal)}</span></p>
                       <p>− Impuestos F29 <span className="font-semibold text-slate-700">{clp(impuestos)}</span></p>
                     </div>
