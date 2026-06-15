@@ -88,7 +88,7 @@ export default function Dashboard() {
     setProdSearchInput(v);
     if (prodDebounce.current) clearTimeout(prodDebounce.current);
     prodDebounce.current = setTimeout(() => setProdSearch(v), 150);
-∑X  }, []);
+  }, []);
   const handleCatSearch = useCallback((v: string) => {
     setCatSearchInput(v);
     if (catDebounce.current) clearTimeout(catDebounce.current);
