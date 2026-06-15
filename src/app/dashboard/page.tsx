@@ -26,14 +26,16 @@ type Kpis = {
   purchases_vs_sales: { week: string; compras: number; ventas: number }[];
 };
 
-// Gastos de personal (honorarios + sueldos) desde Google Sheets
+// Gastos de personal (honorarios + sueldos) e impuestos desde Google Sheets
 type GastoDetalle = { fecha: string; tipo: string; rut: string; nombre: string; glosa: string; monto_bruto: number; retencion_descuentos: number; monto_liquido: number; periodo: string };
 type Gastos = {
   ok: boolean;
   rango: { from: string | null; to: string | null };
   honorarios: { cantidad: number; total_bruto: number; total_liquido: number };
   sueldos: { cantidad: number; total_bruto: number; total_liquido: number };
+  impuestos: { cantidad: number; total: number };
   total_gastos_personal: number;
+  total_impuestos: number;
   detalle: GastoDetalle[];
 };
 
@@ -121,7 +123,7 @@ export default function Dashboard() {
       .catch((e) => { setError(String(e)); setLoading(false); });
   }, [range, shift, appliedCats, appliedProds]);
 
-  // Cargar gastos de personal (honorarios + sueldos) según el rango
+  // Cargar gastos (honorarios + sueldos + impuestos) según el rango
   useEffect(() => {
     const q = new URLSearchParams({ from: range.from, to: range.to });
     fetch(`/api/gastos?${q}`)
@@ -215,7 +217,7 @@ export default function Dashboard() {
     if (!gastos) return;
     const rows = gastos.detalle.map((g) => ({
       Fecha: g.fecha,
-      Tipo: g.tipo === "honorario" ? "Honorario" : "Sueldo",
+      Tipo: g.tipo === "honorario" ? "Honorario" : g.tipo === "sueldo" ? "Sueldo" : "Impuesto",
       RUT: g.rut,
       Nombre: g.nombre,
       Glosa: g.glosa,
@@ -223,7 +225,7 @@ export default function Dashboard() {
       "Retención/Descuentos": Number(g.retencion_descuentos),
       "Monto líquido": Number(g.monto_liquido),
     }));
-    exportToExcel(rows, "Gastos personal", `gastos-personal-${range.from}-a-${range.to}`);
+    exportToExcel(rows, "Gastos", `gastos-${range.from}-a-${range.to}`);
   };
 
   return (
@@ -729,11 +731,17 @@ export default function Dashboard() {
         {kpis && !loading && tab === "compras" && (() => {
           const ps = kpis.purchases_summary;
           const personal = gastos?.total_gastos_personal ?? 0;
+          const impuestos = gastos?.total_impuestos ?? 0;
           const comprasNeto = Number(ps?.purchased_neto) || 0;
           const ventasNeto = Number(ps?.sales_neto) || 0;
-          const egresoTotal = comprasNeto + personal;
           const ratio = ps && ventasNeto > 0 ? (comprasNeto / ventasNeto) * 100 : null;
-          const ratioEgreso = ventasNeto > 0 ? (egresoTotal / ventasNeto) * 100 : null;
+
+          // Utilidad = Venta Total − Costo productos − Personal − F29
+          const ventaTotal = Number(kpis.summary.total) || 0;
+          const costoProductos = Number(kpis.summary.cost) || 0;
+          const utilidad = ventaTotal - costoProductos - personal - impuestos;
+          const margenUtilidad = ventaTotal > 0 ? (utilidad / ventaTotal) * 100 : null;
+
           return (
             <>
               <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -743,13 +751,35 @@ export default function Dashboard() {
                 <Kpi title="N° de compras" value={num(ps?.purchases_count)} delta={null} sub="facturas" />
               </div>
 
-              {/* ── Gastos de personal (honorarios + sueldos) ── */}
+              {/* ── Gastos de personal e impuestos ── */}
               <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <Kpi title="Honorarios" value={clp(gastos?.honorarios.total_bruto)} delta={null} sub={`${num(gastos?.honorarios.cantidad ?? 0)} boletas (bruto)`} />
                 <Kpi title="Sueldos" value={clp(gastos?.sueldos.total_bruto)} delta={null} sub={`${num(gastos?.sueldos.cantidad ?? 0)} personas (bruto)`} />
                 <Kpi title="Gasto en personal" value={clp(personal)} delta={null} sub="honorarios + sueldos" />
-                <Kpi title="Egreso total" value={clp(egresoTotal)} delta={null}
-                  sub={ratioEgreso !== null ? `${ratioEgreso.toFixed(0)}% de las ventas` : "compras + personal"} />
+                <Kpi title="Impuestos (F29)" value={clp(impuestos)} delta={null} sub={`${num(gastos?.impuestos.cantidad ?? 0)} pago(s)`} />
+              </div>
+
+              {/* ── Utilidad ── */}
+              <div className="mt-4">
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 p-5 shadow-sm">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">Utilidad del período</p>
+                      <p className={`mt-1 text-2xl font-bold tracking-tight sm:text-3xl ${utilidad >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                        {clp(utilidad)}
+                      </p>
+                      {margenUtilidad !== null && (
+                        <p className="mt-1 text-xs text-slate-500">margen {margenUtilidad.toFixed(1)}% sobre venta total</p>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500 sm:text-right">
+                      <p>Venta total <span className="font-semibold text-slate-700">{clp(ventaTotal)}</span></p>
+                      <p>− Costo productos <span className="font-semibold text-slate-700">{clp(costoProductos)}</span></p>
+                      <p>− Personal <span className="font-semibold text-slate-700">{clp(personal)}</span></p>
+                      <p>− Impuestos F29 <span className="font-semibold text-slate-700">{clp(impuestos)}</span></p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <Card className="mt-4" title="Compras vs Ventas por semana">
@@ -802,15 +832,15 @@ export default function Dashboard() {
                 </div>
               </Card>
 
-              {/* ── Detalle de gastos de personal ── */}
-              <Card className="mt-4" title={`Gastos de personal (${gastos?.detalle.length ?? 0})`}
+              {/* ── Detalle de gastos (personal + impuestos) ── */}
+              <Card className="mt-4" title={`Gastos del período (${gastos?.detalle.length ?? 0})`}
                 action={
                   <button onClick={exportGastosExcel}
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
                 }>
-                <p className="mb-3 text-xs text-slate-500">Honorarios y sueldos del período (desde la planilla). El monto bruto es el costo total para el negocio.</p>
+                <p className="mb-3 text-xs text-slate-500">Honorarios, sueldos e impuestos del período (desde la planilla). El monto bruto es el costo total para el negocio.</p>
                 {!gastos || gastos.detalle.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-slate-400">Sin gastos de personal registrados en este período.</p>
+                  <p className="py-6 text-center text-sm text-slate-400">Sin gastos registrados en este período.</p>
                 ) : (
                   <div className="max-h-[460px] overflow-auto">
                     <table className="w-full text-sm">
@@ -826,21 +856,26 @@ export default function Dashboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {gastos.detalle.map((g, i) => (
-                          <tr key={i} className="border-t border-slate-100">
-                            <td className="py-1.5 pr-4 whitespace-nowrap">{g.fecha}</td>
-                            <td className="py-1.5 px-4">
-                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${g.tipo === "honorario" ? "bg-amber-50 text-amber-700" : "bg-indigo-50 text-indigo-700"}`}>
-                                {g.tipo === "honorario" ? "Honorario" : "Sueldo"}
-                              </span>
-                            </td>
-                            <td className="py-1.5 px-4">{g.nombre}</td>
-                            <td className="py-1.5 px-4 text-slate-500">{g.glosa}</td>
-                            <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{clp(g.monto_bruto)}</td>
-                            <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap text-slate-500">{clp(g.retencion_descuentos)}</td>
-                            <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(g.monto_liquido)}</td>
-                          </tr>
-                        ))}
+                        {gastos.detalle.map((g, i) => {
+                          const estilo = g.tipo === "honorario" ? "bg-amber-50 text-amber-700"
+                            : g.tipo === "sueldo" ? "bg-indigo-50 text-indigo-700"
+                            : "bg-rose-50 text-rose-700";
+                          const etiqueta = g.tipo === "honorario" ? "Honorario"
+                            : g.tipo === "sueldo" ? "Sueldo" : "Impuesto";
+                          return (
+                            <tr key={i} className="border-t border-slate-100">
+                              <td className="py-1.5 pr-4 whitespace-nowrap">{g.fecha}</td>
+                              <td className="py-1.5 px-4">
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${estilo}`}>{etiqueta}</span>
+                              </td>
+                              <td className="py-1.5 px-4">{g.nombre}</td>
+                              <td className="py-1.5 px-4 text-slate-500">{g.glosa}</td>
+                              <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{clp(g.monto_bruto)}</td>
+                              <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap text-slate-500">{clp(g.retencion_descuentos)}</td>
+                              <td className="py-1.5 pl-6 text-right tabular-nums whitespace-nowrap">{clp(g.monto_liquido)}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                       <tfoot className="sticky bottom-0 bg-white">
                         <tr className="border-t-2 border-slate-300 font-bold">
