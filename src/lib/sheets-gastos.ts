@@ -1,11 +1,11 @@
-// Lee la hoja de gastos (honorarios + sueldos) publicada como CSV
+// Lee la hoja de gastos (honorarios + sueldos + impuestos) publicada como CSV
 // y la entrega normalizada para el dashboard.
 
 const CSV_URL = process.env.GASTOS_SHEET_CSV_URL!;
 
 export interface Gasto {
   fecha: string;
-  tipo: string;            // 'honorario' | 'sueldo'
+  tipo: string;            // 'honorario' | 'sueldo' | 'impuesto'
   rut: string;
   nombre: string;
   glosa: string;
@@ -127,6 +127,7 @@ export async function resumenGastos(from?: string, to?: string) {
 
   const honorarios = filtrados.filter((g) => g.tipo === "honorario");
   const sueldos = filtrados.filter((g) => g.tipo === "sueldo");
+  const impuestos = filtrados.filter((g) => g.tipo === "impuesto");
 
   const sumar = (arr: Gasto[], campo: keyof Gasto) =>
     arr.reduce((acc, g) => acc + (Number(g[campo]) || 0), 0);
@@ -143,7 +144,12 @@ export async function resumenGastos(from?: string, to?: string) {
       total_bruto: sumar(sueldos, "monto_bruto"),
       total_liquido: sumar(sueldos, "monto_liquido"),
     },
-    total_gastos_personal: sumar(filtrados, "monto_bruto"),
+    impuestos: {
+      cantidad: impuestos.length,
+      total: sumar(impuestos, "monto_bruto"),
+    },
+    total_gastos_personal: sumar([...honorarios, ...sueldos], "monto_bruto"),
+    total_impuestos: sumar(impuestos, "monto_bruto"),
     detalle: filtrados,
   };
 }
