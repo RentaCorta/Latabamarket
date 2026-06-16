@@ -7,24 +7,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
   }
 
-  const ids = [48297142, 48332990]; // folios 232536 y 232665
-  const resultados = [];
-
-  for (const id of ids) {
-    const detail = await relbaseFetch(`/dtes/${id}`);
-    const d = detail?.data;
-    resultados.push({
-      id,
-      folio: d?.folio,
-      amount_total: d?.amount_total,
-      real_amount_total: d?.real_amount_total,
-      real_amount_neto: d?.real_amount_neto,
-      // mostramos todas las claves disponibles para inspeccionar
-      claves_disponibles: d ? Object.keys(d) : [],
-      objeto_completo: d,
-    });
-    await new Promise((r) => setTimeout(r, 150));
+  const id = url.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ ok: false, error: "Falta el parámetro ?id=" });
   }
 
-  return NextResponse.json({ ok: true, resultados });
+  const detail = await relbaseFetch(`/dtes/${id}`);
+  const d = detail?.data;
+
+  return NextResponse.json({
+    ok: true,
+    id,
+    folio: d?.folio,
+    status: d?.status,
+    sii_status: d?.sii_status,
+    amount_total: d?.amount_total,
+    real_amount_total: d?.real_amount_total,
+    real_amount_exempt: d?.real_amount_exempt,
+    references: d?.references,
+    dte_children: d?.dte_children,
+  });
 }
