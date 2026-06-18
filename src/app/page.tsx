@@ -9,6 +9,12 @@ import {
 
 type Summary = { total: number; neto: number; exempt: number; transactions: number; avg_ticket: number; cost: number; profit: number };
 type SlowMover = { product_id: number; name: string; category: string; stock: number; last_sold: string; days_since: number };
+type StockCoverage = {
+  product_id: number; name: string; category: string;
+  stock: number; units_sold: number; units_per_day: number;
+  days_coverage: number | null; last_sold: string | null;
+  days_since: number | null; stock_value: number;
+};
 type Kpis = {
   range: { from: string; to: string; shift: string };
   summary: Summary;
@@ -97,6 +103,9 @@ export default function Dashboard() {
   const [slowDays, setSlowDays] = useState(15);
   const [slowCat, setSlowCat] = useState("todas");
   const [slowMovers, setSlowMovers] = useState<SlowMover[]>([]);
+  const [coverage, setCoverage] = useState<StockCoverage[]>([]);
+  const [covWindow, setCovWindow] = useState(30);
+  const [covCritDays, setCovCritDays] = useState(7);
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [gastos, setGastos] = useState<Gastos | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,6 +155,14 @@ export default function Dashboard() {
       .then((d) => { if (d.ok) setSlowMovers(d.slow_movers ?? []); })
       .catch(() => {});
   }, [slowDays]);
+
+  // Cargar cobertura de stock (reponer urgente / liquidar)
+  useEffect(() => {
+    fetch(`/api/stock-coverage?window=${covWindow}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setCoverage(d.products ?? []); })
+      .catch(() => {});
+  }, [covWindow]);
 
   const applyPreset = (p: string) => { setPreset(p); setRange(presetRange(p)); };
   const applyCustom = (field: "from" | "to", v: string) => { setPreset("custom"); setRange((r) => ({ ...r, [field]: v })); };
@@ -598,6 +615,16 @@ export default function Dashboard() {
             .filter((s) => slowCat === "todas" || s.category === slowCat)
             .filter((s) => appliedCats.size === 0 || appliedCats.has(s.category))
             .filter((s) => appliedProds.size === 0 || appliedProds.has(s.name));
+
+          // Cobertura de stock
+          const reponer = coverage
+            .filter((c) => c.days_coverage !== null && Number(c.days_coverage) <= covCritDays)
+            .sort((a, b) => Number(a.days_coverage) - Number(b.days_coverage));
+          const liquidar = coverage
+            .filter((c) => Number(c.units_sold) === 0)
+            .sort((a, b) => Number(b.stock_value) - Number(a.stock_value));
+          const valorLiquidar = liquidar.reduce((a, c) => a + Number(c.stock_value), 0);
+
           return (
             <>
               <Card className="mt-6" title="Productos con stock sin venta">
@@ -637,6 +664,100 @@ export default function Dashboard() {
                           <td className="py-1.5 px-4 text-right tabular-nums">{num(s.stock)}</td>
                           <td className="py-1.5 px-4 text-right tabular-nums whitespace-nowrap">{s.last_sold}</td>
                           <td className="py-1.5 pl-6 text-right font-semibold tabular-nums">{num(s.days_since)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* ── Reponer urgente (stock crítico por días de cobertura) ── */}
+              <Card className="mt-4" title={`Reponer urgente — stock crítico (${reponer.length})`}
+                action={
+                  <div className="flex items-center gap-2">
+                    <select value={covWindow} onChange={(e) => setCovWindow(Number(e.target.value))}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
+                      <option value={15}>Ritmo últimos 15 días</option>
+                      <option value={30}>Ritmo últimos 30 días</option>
+                      <option value={60}>Ritmo últimos 60 días</option>
+                    </select>
+                    <select value={covCritDays} onChange={(e) => setCovCritDays(Number(e.target.value))}
+                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs">
+                      <option value={3}>&lt; 3 días cobertura</option>
+                      <option value={7}>&lt; 7 días cobertura</option>
+                      <option value={14}>&lt; 14 días cobertura</option>
+                    </select>
+                    <button onClick={() => exportToExcel(
+                      reponer.map((c) => ({
+                        Producto: c.name, "Categoría": c.category, Stock: Number(c.stock),
+                        "Vendido (período)": Number(c.units_sold), "Venta/día": Number(c.units_per_day),
+                        "Días cobertura": Number(c.days_coverage),
+                      })),
+                      "Reponer urgente", `reponer-urgente-${range.from}-a-${range.to}`
+                    )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                  </div>
+                }>
+                <p className="mb-3 text-xs text-slate-500">Productos que se venden bien y están por agotarse. Los días de cobertura indican cuánto dura el stock al ritmo de venta actual.</p>
+                <div className="max-h-[420px] overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-slate-500">
+                        <th className="pb-2 pr-4 font-medium">Producto</th>
+                        <th className="pb-2 px-4 text-right font-medium">Stock</th>
+                        <th className="pb-2 px-4 text-right font-medium">Venta/día</th>
+                        <th className="pb-2 pl-6 text-right font-medium">Días cobertura</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reponer.map((c) => (
+                        <tr key={c.product_id} className="border-t border-slate-100">
+                          <td className="py-1.5 pr-4">{c.name}</td>
+                          <td className="py-1.5 px-4 text-right tabular-nums">{num(c.stock)}</td>
+                          <td className="py-1.5 px-4 text-right tabular-nums">{num(c.units_per_day)}</td>
+                          <td className="py-1.5 pl-6 text-right font-semibold tabular-nums">
+                            <span className={Number(c.days_coverage) <= 3 ? "text-rose-600" : "text-amber-600"}>
+                              {num(c.days_coverage)} días
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+
+              {/* ── No reponer / liquidar ── */}
+              <Card className="mt-4" title={`No reponer / liquidar (${liquidar.length})`}
+                action={
+                  <button onClick={() => exportToExcel(
+                    liquidar.map((c) => ({
+                      Producto: c.name, "Categoría": c.category, Stock: Number(c.stock),
+                      "Valor inmovilizado": Number(c.stock_value),
+                      "Última venta": c.last_sold ?? "Sin ventas en período",
+                    })),
+                    "Liquidar", `liquidar-stock-${range.from}-a-${range.to}`
+                  )} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                }>
+                <p className="mb-3 text-xs text-slate-500">
+                  Productos con stock pero sin ventas en los últimos {covWindow} días. Capital inmovilizado: <span className="font-semibold text-slate-700">{clp(valorLiquidar)}</span>. Candidatos a liquidar para recuperar caja y espacio.
+                </p>
+                <div className="max-h-[420px] overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-slate-500">
+                        <th className="pb-2 pr-4 font-medium">Producto</th>
+                        <th className="pb-2 px-4 font-medium">Categoría</th>
+                        <th className="pb-2 px-4 text-right font-medium">Stock</th>
+                        <th className="pb-2 pl-6 text-right font-medium">Valor inmovilizado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {liquidar.map((c) => (
+                        <tr key={c.product_id} className="border-t border-slate-100">
+                          <td className="py-1.5 pr-4">{c.name}</td>
+                          <td className="py-1.5 px-4 text-slate-500 whitespace-nowrap">{c.category ?? "—"}</td>
+                          <td className="py-1.5 px-4 text-right tabular-nums">{num(c.stock)}</td>
+                          <td className="py-1.5 pl-6 text-right font-semibold tabular-nums whitespace-nowrap">{clp(c.stock_value)}</td>
                         </tr>
                       ))}
                     </tbody>
