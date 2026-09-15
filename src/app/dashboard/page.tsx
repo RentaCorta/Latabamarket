@@ -32,7 +32,7 @@ type Kpis = {
   purchases_vs_sales: { week: string; compras: number; ventas: number }[];
 };
 
-// Gastos de personal (honorarios + sueldos) e impuestos desde Google Sheets
+// Gastos de personal (honorarios + sueldos), impuestos y marketing desde Google Sheets
 type GastoDetalle = { fecha: string; tipo: string; rut: string; nombre: string; glosa: string; monto_bruto: number; retencion_descuentos: number; monto_liquido: number; periodo: string };
 type Gastos = {
   ok: boolean;
@@ -40,8 +40,10 @@ type Gastos = {
   honorarios: { cantidad: number; total_bruto: number; total_liquido: number };
   sueldos: { cantidad: number; total_bruto: number; total_liquido: number };
   impuestos: { cantidad: number; total: number };
+  marketing: { cantidad: number; total: number };
   total_gastos_personal: number;
   total_impuestos: number;
+  total_marketing: number;
   detalle: GastoDetalle[];
 };
 
@@ -132,7 +134,7 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
       .catch((e) => { setError(String(e)); setLoading(false); });
   }, [range, shift, appliedCats, appliedProds]);
 
-  // Cargar gastos (honorarios + sueldos + impuestos) según el rango
+  // Cargar gastos (honorarios + sueldos + impuestos + marketing) según el rango
   useEffect(() => {
     const q = new URLSearchParams({ from: range.from, to: range.to });
     fetch(`/api/gastos?${q}`)
@@ -232,9 +234,13 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
 
   const exportGastosExcel = () => {
     if (!gastos) return;
+    const etiquetaTipo = (t: string) =>
+      t === "honorario" ? "Honorario" : t === "sueldo" ? "Sueldo"
+        : t === "impuesto" ? "Impuesto"
+        : (t === "marketing" || t === "publicidad") ? "Marketing" : t;
     const rows = gastos.detalle.map((g) => ({
       Fecha: g.fecha,
-      Tipo: g.tipo === "honorario" ? "Honorario" : g.tipo === "sueldo" ? "Sueldo" : "Impuesto",
+      Tipo: etiquetaTipo(g.tipo),
       RUT: g.rut,
       Nombre: g.nombre,
       Glosa: g.glosa,
@@ -855,14 +861,15 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
           const ps = kpis.purchases_summary;
           const personal = gastos?.total_gastos_personal ?? 0;
           const impuestos = gastos?.total_impuestos ?? 0;
+          const marketing = gastos?.total_marketing ?? 0;
           const comprasNeto = Number(ps?.purchased_neto) || 0;
           const ventasNeto = Number(ps?.sales_neto) || 0;
           const ratio = ps && ventasNeto > 0 ? (comprasNeto / ventasNeto) * 100 : null;
 
-          // Utilidad = Venta Total − Compras (con IVA) − Personal − F29
+          // Utilidad = Venta Total − Compras (con IVA) − Personal − F29 − Marketing
           const ventaTotal = Number(kpis.summary.total) || 0;
           const comprasTotal = Number(ps?.purchased_total) || 0;
-          const utilidad = ventaTotal - comprasTotal - personal - impuestos;
+          const utilidad = ventaTotal - comprasTotal - personal - impuestos - marketing;
           const margenUtilidad = ventaTotal > 0 ? (utilidad / ventaTotal) * 100 : null;
 
           return (
@@ -874,12 +881,16 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                 <Kpi title="N° de compras" value={num(ps?.purchases_count)} delta={null} sub="facturas" />
               </div>
 
-              {/* ── Gastos de personal e impuestos ── */}
+              {/* ── Gastos de personal, impuestos y marketing ── */}
               <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <Kpi title="Honorarios" value={clp(gastos?.honorarios.total_bruto)} delta={null} sub={`${num(gastos?.honorarios.cantidad ?? 0)} boletas (bruto)`} />
                 <Kpi title="Sueldos" value={clp(gastos?.sueldos.total_bruto)} delta={null} sub={`${num(gastos?.sueldos.cantidad ?? 0)} personas (bruto)`} />
                 <Kpi title="Gasto en personal" value={clp(personal)} delta={null} sub="honorarios + sueldos" />
                 <Kpi title="Impuestos (F29)" value={clp(impuestos)} delta={null} sub={`${num(gastos?.impuestos.cantidad ?? 0)} pago(s)`} />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <Kpi title="Marketing / Publicidad" value={clp(marketing)} delta={null} sub={`${num(gastos?.marketing?.cantidad ?? 0)} gasto(s) (con IVA)`} />
               </div>
 
               {/* ── Utilidad ── */}
@@ -900,6 +911,7 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                       <p>− Compras (con IVA) <span className="font-semibold text-slate-700">{clp(comprasTotal)}</span></p>
                       <p>− Personal <span className="font-semibold text-slate-700">{clp(personal)}</span></p>
                       <p>− Impuestos F29 <span className="font-semibold text-slate-700">{clp(impuestos)}</span></p>
+                      <p>− Marketing <span className="font-semibold text-slate-700">{clp(marketing)}</span></p>
                     </div>
                   </div>
                 </div>
@@ -955,13 +967,13 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                 </div>
               </Card>
 
-              {/* ── Detalle de gastos (personal + impuestos) ── */}
+              {/* ── Detalle de gastos (personal + impuestos + marketing) ── */}
               <Card className="mt-4" title={`Gastos del período (${gastos?.detalle.length ?? 0})`}
                 action={
                   <button onClick={exportGastosExcel}
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
                 }>
-                <p className="mb-3 text-xs text-slate-500">Honorarios, sueldos e impuestos del período (desde la planilla). El monto bruto es el costo total para el negocio.</p>
+                <p className="mb-3 text-xs text-slate-500">Honorarios, sueldos, impuestos y marketing del período (desde la planilla). El monto bruto es el costo total para el negocio.</p>
                 {!gastos || gastos.detalle.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">Sin gastos registrados en este período.</p>
                 ) : (
@@ -980,11 +992,14 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                       </thead>
                       <tbody>
                         {gastos.detalle.map((g, i) => {
+                          const esMkt = g.tipo === "marketing" || g.tipo === "publicidad";
                           const estilo = g.tipo === "honorario" ? "bg-amber-50 text-amber-700"
                             : g.tipo === "sueldo" ? "bg-indigo-50 text-indigo-700"
+                            : esMkt ? "bg-emerald-50 text-emerald-700"
                             : "bg-rose-50 text-rose-700";
                           const etiqueta = g.tipo === "honorario" ? "Honorario"
-                            : g.tipo === "sueldo" ? "Sueldo" : "Impuesto";
+                            : g.tipo === "sueldo" ? "Sueldo"
+                            : esMkt ? "Marketing" : "Impuesto";
                           return (
                             <tr key={i} className="border-t border-slate-100">
                               <td className="py-1.5 pr-4 whitespace-nowrap">{g.fecha}</td>

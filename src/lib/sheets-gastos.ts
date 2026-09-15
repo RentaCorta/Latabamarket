@@ -128,6 +128,7 @@ export async function resumenGastos(from?: string, to?: string) {
   const honorarios = filtrados.filter((g) => g.tipo === "honorario");
   const sueldos = filtrados.filter((g) => g.tipo === "sueldo");
   const impuestos = filtrados.filter((g) => g.tipo === "impuesto");
+  const marketing = filtrados.filter((g) => g.tipo === "marketing" || g.tipo === "publicidad");
 
   const sumar = (arr: Gasto[], campo: keyof Gasto) =>
     arr.reduce((acc, g) => acc + (Number(g[campo]) || 0), 0);
@@ -148,8 +149,13 @@ export async function resumenGastos(from?: string, to?: string) {
       cantidad: impuestos.length,
       total: sumar(impuestos, "monto_bruto"),
     },
+    marketing: {
+      cantidad: marketing.length,
+      total: sumar(marketing, "monto_bruto"),
+    },
     total_gastos_personal: sumar([...honorarios, ...sueldos], "monto_bruto"),
     total_impuestos: sumar(impuestos, "monto_bruto"),
+    total_marketing: sumar(marketing, "monto_bruto"),
     detalle: filtrados,
   };
 }
