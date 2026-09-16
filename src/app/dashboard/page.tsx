@@ -15,6 +15,7 @@ type StockCoverage = {
   days_coverage: number | null; last_sold: string | null;
   days_since: number | null; stock_value: number;
 };
+type MonthlyRow = { mes: string; ventas: number; compras_total: number; ventas_neto: number };
 type Kpis = {
   range: { from: string; to: string; shift: string };
   summary: Summary;
@@ -49,6 +50,12 @@ type Gastos = {
 
 const clp = (n: unknown) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Number(n) || 0);
 const num = (n: unknown) => new Intl.NumberFormat("es-CL").format(Number(n) || 0);
+
+const MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function nombreMes(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return `${MESES_ES[(m || 1) - 1]} ${y}`;
+}
 
 function fmtDate(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -110,6 +117,7 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
   const [covCritDays, setCovCritDays] = useState(7);
   const [kpis, setKpis] = useState<Kpis | null>(null);
   const [gastos, setGastos] = useState<Gastos | null>(null);
+  const [monthly, setMonthly] = useState<MonthlyRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Filtros aplicados (los que viajan al backend)
@@ -141,6 +149,15 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
       .then((r) => r.json())
       .then((d) => { if (d.ok) setGastos(d); else setGastos(null); })
       .catch(() => setGastos(null));
+  }, [range]);
+
+  // Cargar evolución mes a mes (ventas + compras por mes) según el rango
+  useEffect(() => {
+    const q = new URLSearchParams({ from: range.from, to: range.to });
+    fetch(`/api/monthly?${q}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setMonthly(d.months ?? []); else setMonthly([]); })
+      .catch(() => setMonthly([]));
   }, [range]);
 
   // Cargar opciones de filtros una sola vez al montar
@@ -872,6 +889,49 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
           const utilidad = ventaTotal - comprasTotal - personal - impuestos - marketing;
           const margenUtilidad = ventaTotal > 0 ? (utilidad / ventaTotal) * 100 : null;
 
+          // ── Evolución mes a mes: agrupa gastos del detalle por mes (YYYY-MM) ──
+          const gastosPorMes: Record<string, { personal: number; f29: number; mkt: number }> = {};
+          for (const g of gastos?.detalle ?? []) {
+            const ym = (g.fecha || "").slice(0, 7);
+            if (!ym) continue;
+            if (!gastosPorMes[ym]) gastosPorMes[ym] = { personal: 0, f29: 0, mkt: 0 };
+            const monto = Number(g.monto_bruto) || 0;
+            if (g.tipo === "honorario" || g.tipo === "sueldo") gastosPorMes[ym].personal += monto;
+            else if (g.tipo === "impuesto") gastosPorMes[ym].f29 += monto;
+            else if (g.tipo === "marketing" || g.tipo === "publicidad") gastosPorMes[ym].mkt += monto;
+          }
+          // Une los meses que vienen de ventas/compras con los meses que tienen gastos
+          const mesesSet = new Set<string>([...monthly.map((m) => m.mes), ...Object.keys(gastosPorMes)]);
+          const meses = [...mesesSet].sort();
+          const evolucion = meses.map((ym) => {
+            const mv = monthly.find((m) => m.mes === ym);
+            const ventas = Number(mv?.ventas) || 0;
+            const compras = Number(mv?.compras_total) || 0;
+            const gp = gastosPorMes[ym] ?? { personal: 0, f29: 0, mkt: 0 };
+            const util = ventas - compras - gp.personal - gp.f29 - gp.mkt;
+            const margen = ventas > 0 ? (util / ventas) * 100 : null;
+            return { ym, ventas, compras, personal: gp.personal, f29: gp.f29, mkt: gp.mkt, util, margen };
+          });
+          const totEvo = evolucion.reduce((a, r) => ({
+            ventas: a.ventas + r.ventas, compras: a.compras + r.compras,
+            personal: a.personal + r.personal, f29: a.f29 + r.f29, mkt: a.mkt + r.mkt, util: a.util + r.util,
+          }), { ventas: 0, compras: 0, personal: 0, f29: 0, mkt: 0, util: 0 });
+          const margenTot = totEvo.ventas > 0 ? (totEvo.util / totEvo.ventas) * 100 : null;
+
+          const exportEvolucionExcel = () => {
+            const rows = evolucion.map((r) => ({
+              Mes: nombreMes(r.ym), Ventas: r.ventas, Compras: r.compras,
+              Personal: r.personal, F29: r.f29, Marketing: r.mkt, Utilidad: r.util,
+              "Margen %": r.margen !== null ? Math.round(r.margen * 10) / 10 : "",
+            }));
+            rows.push({
+              Mes: "Total", Ventas: totEvo.ventas, Compras: totEvo.compras,
+              Personal: totEvo.personal, F29: totEvo.f29, Marketing: totEvo.mkt, Utilidad: totEvo.util,
+              "Margen %": margenTot !== null ? Math.round(margenTot * 10) / 10 : "",
+            });
+            exportToExcel(rows, "Evolucion mensual", `evolucion-mensual-${range.from}-a-${range.to}`);
+          };
+
           return (
             <>
               <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -916,6 +976,61 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                   </div>
                 </div>
               </div>
+
+              {/* ── Evolución mes a mes ── */}
+              <Card className="mt-4" title="Evolución mes a mes"
+                action={
+                  <button onClick={exportEvolucionExcel}
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
+                }>
+                <p className="mb-3 text-xs text-slate-500">Cada fila es un mes dentro del rango. Utilidad = Ventas − Compras (con IVA) − Personal − F29 − Marketing. Los gastos se reparten por la fecha de cada uno en la planilla.</p>
+                {evolucion.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-slate-400">Sin datos en este período.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-slate-500">
+                          <th className="pb-2 pr-4 font-medium">Mes</th>
+                          <th className="pb-2 px-3 text-right font-medium">Ventas</th>
+                          <th className="pb-2 px-3 text-right font-medium">Compras</th>
+                          <th className="pb-2 px-3 text-right font-medium">Personal</th>
+                          <th className="pb-2 px-3 text-right font-medium">F29</th>
+                          <th className="pb-2 px-3 text-right font-medium">Marketing</th>
+                          <th className="pb-2 px-3 text-right font-medium">Utilidad</th>
+                          <th className="pb-2 pl-3 text-right font-medium">Margen</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {evolucion.map((r) => (
+                          <tr key={r.ym} className="border-t border-slate-100">
+                            <td className="py-2 pr-4 whitespace-nowrap capitalize">{nombreMes(r.ym)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.ventas)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.compras)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.personal)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.f29)}</td>
+                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.mkt)}</td>
+                            <td className={`py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap ${r.util >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{clp(r.util)}</td>
+                            <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap text-slate-500">{r.margen !== null ? `${r.margen.toFixed(1)}%` : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t-2 border-slate-300 font-bold">
+                          <td className="py-2 pr-4">Total</td>
+                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.ventas)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.compras)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.personal)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.f29)}</td>
+                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.mkt)}</td>
+                          <td className={`py-2 px-3 text-right tabular-nums whitespace-nowrap ${totEvo.util >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{clp(totEvo.util)}</td>
+                          <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{margenTot !== null ? `${margenTot.toFixed(1)}%` : "—"}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+              </Card>
 
               <Card className="mt-4" title="Compras vs Ventas por semana">
                 <ResponsiveContainer width="100%" height={300}>
