@@ -983,52 +983,60 @@ export default function Dashboard({ lockTab }: { lockTab?: string } = {}) {
                   <button onClick={exportEvolucionExcel}
                     className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">↓ Excel</button>
                 }>
-                <p className="mb-3 text-xs text-slate-500">Cada fila es un mes dentro del rango. Utilidad = Ventas − Compras (con IVA) − Personal − F29 − Marketing. Los gastos se reparten por la fecha de cada uno en la planilla.</p>
+                <p className="mb-3 text-xs text-slate-500">Cada columna es un mes dentro del rango. Utilidad = Ventas − Compras (con IVA) − Personal − F29 − Marketing. Los gastos se reparten por la fecha de cada uno en la planilla.</p>
                 {evolucion.length === 0 ? (
                   <p className="py-6 text-center text-sm text-slate-400">Sin datos en este período.</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left text-slate-500">
-                          <th className="pb-2 pr-4 font-medium">Mes</th>
-                          <th className="pb-2 px-3 text-right font-medium">Ventas</th>
-                          <th className="pb-2 px-3 text-right font-medium">Compras</th>
-                          <th className="pb-2 px-3 text-right font-medium">Personal</th>
-                          <th className="pb-2 px-3 text-right font-medium">F29</th>
-                          <th className="pb-2 px-3 text-right font-medium">Marketing</th>
-                          <th className="pb-2 px-3 text-right font-medium">Utilidad</th>
-                          <th className="pb-2 pl-3 text-right font-medium">Margen</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {evolucion.map((r) => (
-                          <tr key={r.ym} className="border-t border-slate-100">
-                            <td className="py-2 pr-4 whitespace-nowrap capitalize">{nombreMes(r.ym)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.ventas)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.compras)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.personal)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.f29)}</td>
-                            <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(r.mkt)}</td>
-                            <td className={`py-2 px-3 text-right font-semibold tabular-nums whitespace-nowrap ${r.util >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{clp(r.util)}</td>
-                            <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap text-slate-500">{r.margen !== null ? `${r.margen.toFixed(1)}%` : "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t-2 border-slate-300 font-bold">
-                          <td className="py-2 pr-4">Total</td>
-                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.ventas)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.compras)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.personal)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.f29)}</td>
-                          <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{clp(totEvo.mkt)}</td>
-                          <td className={`py-2 px-3 text-right tabular-nums whitespace-nowrap ${totEvo.util >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{clp(totEvo.util)}</td>
-                          <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{margenTot !== null ? `${margenTot.toFixed(1)}%` : "—"}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  (() => {
+                    // Filas = conceptos; columnas = meses. Última columna = Total.
+                    const filas: { label: string; get: (r: typeof evolucion[number]) => number; total: number; kind?: "util" }[] = [
+                      { label: "Ventas", get: (r) => r.ventas, total: totEvo.ventas },
+                      { label: "Compras", get: (r) => r.compras, total: totEvo.compras },
+                      { label: "Personal", get: (r) => r.personal, total: totEvo.personal },
+                      { label: "F29", get: (r) => r.f29, total: totEvo.f29 },
+                      { label: "Marketing", get: (r) => r.mkt, total: totEvo.mkt },
+                      { label: "Utilidad", get: (r) => r.util, total: totEvo.util, kind: "util" },
+                    ];
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-slate-500">
+                              <th className="sticky left-0 bg-white pb-2 pr-4 font-medium">Concepto</th>
+                              {evolucion.map((r) => (
+                                <th key={r.ym} className="pb-2 px-3 text-right font-medium capitalize whitespace-nowrap">{nombreMes(r.ym)}</th>
+                              ))}
+                              <th className="pb-2 pl-3 text-right font-medium whitespace-nowrap">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filas.map((fila) => {
+                              const esUtil = fila.kind === "util";
+                              return (
+                                <tr key={fila.label} className={`border-t border-slate-100 ${esUtil ? "border-t-2 border-slate-300 font-semibold" : ""}`}>
+                                  <td className="sticky left-0 bg-white py-2 pr-4 whitespace-nowrap">{fila.label}</td>
+                                  {evolucion.map((r) => {
+                                    const v = fila.get(r);
+                                    return (
+                                      <td key={r.ym} className={`py-2 px-3 text-right tabular-nums whitespace-nowrap ${esUtil ? (v >= 0 ? "text-emerald-700" : "text-rose-700") : ""}`}>{clp(v)}</td>
+                                    );
+                                  })}
+                                  <td className={`py-2 pl-3 text-right tabular-nums whitespace-nowrap font-semibold ${esUtil ? (fila.total >= 0 ? "text-emerald-700" : "text-rose-700") : ""}`}>{clp(fila.total)}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr className="border-t border-slate-100 text-slate-500">
+                              <td className="sticky left-0 bg-white py-2 pr-4 whitespace-nowrap">Margen</td>
+                              {evolucion.map((r) => (
+                                <td key={r.ym} className="py-2 px-3 text-right tabular-nums whitespace-nowrap">{r.margen !== null ? `${r.margen.toFixed(1)}%` : "—"}</td>
+                              ))}
+                              <td className="py-2 pl-3 text-right tabular-nums whitespace-nowrap">{margenTot !== null ? `${margenTot.toFixed(1)}%` : "—"}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()
                 )}
               </Card>
 
