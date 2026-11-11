@@ -28,7 +28,7 @@ const HORIZONTES = [5, 7, 14, 21, 30];
 // Categorías de elaboración propia que NO se piden a proveedores.
 // Se compara sin mayúsculas ni tildes y por coincidencia parcial
 // (ej. "COMPLETOS", "Sándwiches", "PROMOCIONES" o "PROMO" quedan fuera).
-const EXCLUIR_CATEGORIAS = ["churrasco", "completo", "sandwich", "promo"];
+const EXCLUIR_CATEGORIAS = ["churrasco", "completo", "sandwich", "promo", "goloso"];
 const normaliza = (s: string | null | undefined) =>
   (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const excluida = (cat: string | null | undefined) => {
@@ -56,6 +56,7 @@ export default function Pedidos() {
   const [prov, setProv] = useState("");        // proveedor seleccionado
   const [soloPedir, setSoloPedir] = useState(false);
   const [solo7, setSolo7] = useState(false);   // solo productos vendidos en los últimos 7 días
+  const [maxDura, setMaxDura] = useState(0);   // filtro "dura hoy" ≤ X días (0 = todos)
   const [busca, setBusca] = useState("");
   const [qtyEdit, setQtyEdit] = useState<Record<number, number>>({});
   const [copiado, setCopiado] = useState(false);
@@ -136,9 +137,11 @@ export default function Pedidos() {
         return { c, p, leadRow, objRow, vd, stock: stockReal, sugerido, pedir, cobActual, cobPost, quiebraAntes, alcanza, costoUnit };
       })
       .filter((r) => prov === SIN || !soloPedir || r.pedir > 0)
+      // Filtro por días que dura el stock actual (sin ventas = no se puede estimar, queda fuera)
+      .filter((r) => maxDura === 0 || (r.cobActual !== null && r.cobActual <= maxDura))
       .sort((a, b) => (a.cobActual ?? 1e9) - (b.cobActual ?? 1e9));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cov, prov, busca, horizonte, seg, qtyEdit, soloPedir, solo7, catMap, prodMap, leadMap]);
+  }, [cov, prov, busca, horizonte, seg, qtyEdit, soloPedir, solo7, maxDura, catMap, prodMap, leadMap]);
 
   const totUnidades = filas.reduce((a, r) => a + r.pedir, 0);
   const totCosto = filas.reduce((a, r) => a + (r.costoUnit !== null ? r.costoUnit * r.pedir : 0), 0);
@@ -267,7 +270,7 @@ export default function Pedidos() {
                   <>Pedido = venta diaria × ({lead} días de entrega + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.
                   El pedido debe cubrir <span className="font-semibold text-slate-700">{diasObjetivo} días</span> desde hoy.</>
                 )}
-                {" "}No incluye Churrascos, Completos, Sándwiches ni Promociones (elaboración propia).
+                {" "}No incluye Churrascos, Completos, Sándwiches, Promociones ni Gastronómica Goloso (elaboración propia).
               </p>
             )}
 
@@ -291,6 +294,17 @@ export default function Pedidos() {
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
                   <input type="checkbox" checked={solo7} onChange={(e) => setSolo7(e.target.checked)} /> Vendidos últimos 7 días
                 </label>
+                {prov !== SIN && (
+                  <select value={maxDura} onChange={(e) => setMaxDura(Number(e.target.value))}
+                    className={`rounded-lg border px-2.5 py-1 text-xs ${maxDura ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white"}`}>
+                    <option value={0}>Dura hoy: todos</option>
+                    <option value={0.0001}>Agotados (0 días)</option>
+                    <option value={3}>Dura ≤ 3 días</option>
+                    <option value={7}>Dura ≤ 7 días</option>
+                    <option value={14}>Dura ≤ 14 días</option>
+                    <option value={30}>Dura ≤ 30 días</option>
+                  </select>
+                )}
                 {prov !== SIN && (
                   <>
                     <label className="flex items-center gap-1.5 text-xs text-slate-600">
