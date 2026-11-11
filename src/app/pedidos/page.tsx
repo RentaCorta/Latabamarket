@@ -25,6 +25,17 @@ const SIN = "__sin__";
 const TODOS = "__todos__";
 const HORIZONTES = [5, 7, 14, 21, 30];
 
+// Categorías de elaboración propia que NO se piden a proveedores.
+// Se compara sin mayúsculas ni tildes y por coincidencia parcial
+// (ej. "COMPLETOS", "Sándwiches", "PROMOCIONES" o "PROMO" quedan fuera).
+const EXCLUIR_CATEGORIAS = ["churrasco", "completo", "sandwich", "promo"];
+const normaliza = (s: string | null | undefined) =>
+  (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const excluida = (cat: string | null | undefined) => {
+  const n = normaliza(cat);
+  return EXCLUIR_CATEGORIAS.some((x) => n.includes(x));
+};
+
 const clp = (n: unknown) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Number(n) || 0);
 const num = (n: unknown, d = 0) => new Intl.NumberFormat("es-CL", { maximumFractionDigits: d }).format(Number(n) || 0);
 const hoy = () => {
@@ -100,6 +111,7 @@ export default function Pedidos() {
   const filas = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return cov
+      .filter((c) => !excluida(c.category))
       .filter((c) => (esTodos ? true : prov === SIN ? provOf(c) === null : provOf(c) === prov))
       .filter((c) => !q || c.name.toLowerCase().includes(q))
       .filter((c) => !solo7 || (c.days_since !== null && c.days_since !== undefined && Number(c.days_since) <= 7))
@@ -132,7 +144,7 @@ export default function Pedidos() {
   const totCosto = filas.reduce((a, r) => a + (r.costoUnit !== null ? r.costoUnit * r.pedir : 0), 0);
   const sinCosto = filas.filter((r) => r.pedir > 0 && r.costoUnit === null).length;
   const enRiesgo = filas.filter((r) => r.quiebraAntes).length;
-  const sinProveedor = useMemo(() => cov.filter((c) => provOf(c) === null && Number(c.units_per_day) > 0).length,
+  const sinProveedor = useMemo(() => cov.filter((c) => !excluida(c.category) && provOf(c) === null && Number(c.units_per_day) > 0).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cov, catMap, prodMap]);
 
@@ -255,6 +267,7 @@ export default function Pedidos() {
                   <>Pedido = venta diaria × ({lead} días de entrega + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.
                   El pedido debe cubrir <span className="font-semibold text-slate-700">{diasObjetivo} días</span> desde hoy.</>
                 )}
+                {" "}No incluye Churrascos, Completos, Sándwiches ni Promociones (elaboración propia).
               </p>
             )}
 
