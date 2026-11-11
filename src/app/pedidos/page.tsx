@@ -12,7 +12,7 @@ type Cov = {
   product_id: number; name: string; category: string;
   stock: number; units_sold: number; units_per_day: number;
   days_coverage: number | null; last_sold: string | null;
-  days_since: number | null; stock_value: number;
+  days_since: number | null; stock_value: number; unit_cost?: number;
 };
 type Setting = { provider_name: string; lead_days: number; contact: string | null };
 type Config = {
@@ -118,7 +118,9 @@ export default function Pedidos() {
         const cobPost = vd > 0 ? (stock + pedir) / vd : null;
         const quiebraAntes = cobActual !== null && cobActual < leadRow;
         const alcanza = cobPost !== null && cobPost >= objRow;
-        const costoUnit = stockReal > 0 ? Number(c.stock_value) / stockReal : null;
+        // Costo unitario directo del producto; respaldo: valor de stock / stock
+        const costoUnit = Number(c.unit_cost) > 0 ? Number(c.unit_cost)
+          : stockReal > 0 && Number(c.stock_value) > 0 ? Number(c.stock_value) / stockReal : null;
         return { c, p, leadRow, objRow, vd, stock: stockReal, sugerido, pedir, cobActual, cobPost, quiebraAntes, alcanza, costoUnit };
       })
       .filter((r) => prov === SIN || !soloPedir || r.pedir > 0)
@@ -260,7 +262,7 @@ export default function Pedidos() {
               <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
                 <Kpi title="Productos a pedir" value={num(filas.filter((r) => r.pedir > 0).length)} />
                 <Kpi title="Unidades totales" value={num(totUnidades)} />
-                <Kpi title="Costo estimado" value={clp(totCosto)} sub={sinCosto ? `${sinCosto} SKU sin costo (stock 0)` : "según costo de inventario"} />
+                <Kpi title="Costo estimado" value={clp(totCosto)} sub={sinCosto ? `${sinCosto} SKU sin costo registrado` : "según costo de inventario"} />
                 <Kpi title="Quiebran antes de llegar" value={num(enRiesgo)} sub={esTodos ? "stock dura menos que la entrega" : `stock dura menos de ${lead} días`} alert={enRiesgo > 0} />
               </div>
             )}
@@ -331,7 +333,7 @@ export default function Pedidos() {
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
                         <th className="pb-2 pr-4 font-medium">Producto</th>
-                        {esTodos && <th className="pb-2 px-3 font-medium">Proveedor</th>}
+                        {esTodos && <th className="pb-2 px-2 font-medium">Proveedor</th>}
                         <th className="pb-2 px-3 text-right font-medium">Stock</th>
                         <th className="pb-2 px-3 text-right font-medium">Venta/día</th>
                         <th className="pb-2 px-3 text-right font-medium">Dura hoy</th>
@@ -347,11 +349,14 @@ export default function Pedidos() {
                             {prodMap.has(Number(r.c.product_id)) && <span className="ml-1.5 rounded bg-indigo-50 px-1.5 text-[10px] text-indigo-600">SKU asignado</span>}
                           </td>
                           {esTodos && (
-                            <td className="py-1.5 px-3 text-xs whitespace-nowrap">
+                            <td className="py-1.5 px-2 text-xs">
                               {r.p ? (
-                                <span className="text-slate-600">{r.p} <span className="text-slate-400">· {r.leadRow} d</span></span>
+                                <div className="w-28 sm:w-36" title={`${r.p} · entrega ${r.leadRow} días`}>
+                                  <div className="truncate text-slate-600">{r.p}</div>
+                                  <div className="text-[10px] text-slate-400">entrega {r.leadRow} d</div>
+                                </div>
                               ) : (
-                                <span className="text-amber-600">Sin proveedor</span>
+                                <span className="whitespace-nowrap text-amber-600">Sin proveedor</span>
                               )}
                             </td>
                           )}
@@ -363,7 +368,7 @@ export default function Pedidos() {
                           <td className="py-1.5 px-3 text-right">
                             <input type="number" min={0} value={r.pedir}
                               onChange={(e) => setQtyEdit((q) => ({ ...q, [r.c.product_id]: Math.max(0, Math.round(Number(e.target.value) || 0)) }))}
-                              className={`w-20 rounded-md border px-2 py-1 text-right tabular-nums ${qtyEdit[r.c.product_id] !== undefined ? "border-indigo-400 bg-indigo-50" : "border-slate-200"}`} />
+                              className={`w-16 rounded-md border px-2 py-1 text-right tabular-nums ${qtyEdit[r.c.product_id] !== undefined ? "border-indigo-400 bg-indigo-50" : "border-slate-200"}`} />
                           </td>
                           <td className="py-1.5 pl-3 whitespace-nowrap text-xs">
                             {r.quiebraAntes ? (
