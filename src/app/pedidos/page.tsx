@@ -22,6 +22,7 @@ type Config = {
 };
 
 const SIN = "__sin__";
+const TODOS = "__todos__";
 const HORIZONTES = [5, 7, 14, 21, 30];
 
 const clp = (n: unknown) => new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(Number(n) || 0);
@@ -42,7 +43,8 @@ export default function Pedidos() {
   const [horizonte, setHorizonte] = useState(7); // días a cubrir después de que llega el pedido
   const [seg, setSeg] = useState(20);          // % de seguridad
   const [prov, setProv] = useState("");        // proveedor seleccionado
-  const [soloPedir, setSoloPedir] = useState(true);
+  const [soloPedir, setSoloPedir] = useState(false);
+  const [solo7, setSolo7] = useState(false);   // solo productos vendidos en los últimos 7 días
   const [busca, setBusca] = useState("");
   const [qtyEdit, setQtyEdit] = useState<Record<number, number>>({});
   const [copiado, setCopiado] = useState(false);
@@ -87,36 +89,42 @@ export default function Pedidos() {
     return [...s].filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [cfg]);
 
-  // Selecciona el primer proveedor por defecto
-  useEffect(() => { if (!prov && proveedores.length) setProv(proveedores[0]); }, [proveedores, prov]);
+  // Por defecto: todos los proveedores
+  useEffect(() => { if (!prov && proveedores.length) setProv(TODOS); }, [proveedores, prov]);
 
-  const lead = prov === SIN ? 0 : (leadMap.get(prov) ?? 0);
-  const leadConfigurado = prov === SIN || leadMap.has(prov);
+  const esTodos = prov === TODOS;
+  const lead = prov === SIN || esTodos ? 0 : (leadMap.get(prov) ?? 0);
+  const leadConfigurado = prov === SIN || esTodos || leadMap.has(prov);
   const diasObjetivo = lead + horizonte;
 
   const filas = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return cov
-      .filter((c) => (prov === SIN ? provOf(c) === null : provOf(c) === prov))
+      .filter((c) => (esTodos ? true : prov === SIN ? provOf(c) === null : provOf(c) === prov))
       .filter((c) => !q || c.name.toLowerCase().includes(q))
+      .filter((c) => !solo7 || (c.days_since !== null && c.days_since !== undefined && Number(c.days_since) <= 7))
       .map((c) => {
+        const p = provOf(c);
+        // Cada producto usa el tiempo de entrega de SU proveedor
+        const leadRow = p ? (leadMap.get(p) ?? 0) : 0;
+        const objRow = leadRow + horizonte;
         const vd = Number(c.units_per_day) || 0;
         const stockReal = Number(c.stock) || 0;
         const stock = Math.max(stockReal, 0);
-        const necesidad = vd * diasObjetivo * (1 + seg / 100);
+        const necesidad = vd * objRow * (1 + seg / 100);
         const sugerido = vd > 0 ? Math.max(0, Math.ceil(necesidad - stock)) : 0;
         const pedir = qtyEdit[c.product_id] ?? sugerido;
         const cobActual = vd > 0 ? stock / vd : null;
         const cobPost = vd > 0 ? (stock + pedir) / vd : null;
-        const quiebraAntes = cobActual !== null && cobActual < lead;
-        const alcanza = cobPost !== null && cobPost >= diasObjetivo;
+        const quiebraAntes = cobActual !== null && cobActual < leadRow;
+        const alcanza = cobPost !== null && cobPost >= objRow;
         const costoUnit = stockReal > 0 ? Number(c.stock_value) / stockReal : null;
-        return { c, vd, stock: stockReal, sugerido, pedir, cobActual, cobPost, quiebraAntes, alcanza, costoUnit };
+        return { c, p, leadRow, objRow, vd, stock: stockReal, sugerido, pedir, cobActual, cobPost, quiebraAntes, alcanza, costoUnit };
       })
       .filter((r) => prov === SIN || !soloPedir || r.pedir > 0)
       .sort((a, b) => (a.cobActual ?? 1e9) - (b.cobActual ?? 1e9));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cov, prov, busca, diasObjetivo, seg, qtyEdit, soloPedir, lead, catMap, prodMap]);
+  }, [cov, prov, busca, horizonte, seg, qtyEdit, soloPedir, solo7, catMap, prodMap, leadMap]);
 
   const totUnidades = filas.reduce((a, r) => a + r.pedir, 0);
   const totCosto = filas.reduce((a, r) => a + (r.costoUnit !== null ? r.costoUnit * r.pedir : 0), 0);
@@ -128,6 +136,7 @@ export default function Pedidos() {
 
   const exportar = () => {
     const rows = filas.filter((r) => r.pedir > 0).map((r) => ({
+      Proveedor: r.p ?? "Sin proveedor",
       Producto: r.c.name, "Categoría": r.c.category, Stock: r.stock,
       "Venta/día": Math.round(r.vd * 100) / 100, "Pedir": r.pedir,
       "Costo unit. aprox": r.costoUnit !== null ? Math.round(r.costoUnit) : "",
@@ -137,13 +146,28 @@ export default function Pedidos() {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Pedido");
-    XLSX.writeFile(wb, `pedido-${prov.replace(/[^\w]+/g, "-").toLowerCase()}-${hoy()}.xlsx`);
+    const nombre = esTodos ? "todos" : prov.replace(/[^\w]+/g, "-").toLowerCase();
+    XLSX.writeFile(wb, `pedido-${nombre}-${hoy()}.xlsx`);
   };
 
   const copiar = async () => {
-    const lineas = filas.filter((r) => r.pedir > 0).map((r) => `• ${r.pedir} x ${r.c.name}`);
-    if (!lineas.length) return;
-    const texto = `Pedido La Taba · ${prov} · ${hoy()}\n\n${lineas.join("\n")}\n\nTotal: ${num(totUnidades)} unidades`;
+    const conPedido = filas.filter((r) => r.pedir > 0);
+    if (!conPedido.length) return;
+    let texto: string;
+    if (esTodos) {
+      // Agrupado por proveedor, listo para mandar a cada uno
+      const grupos = new Map<string, string[]>();
+      for (const r of conPedido) {
+        const k = r.p ?? "Sin proveedor";
+        if (!grupos.has(k)) grupos.set(k, []);
+        grupos.get(k)!.push(`• ${r.pedir} x ${r.c.name}`);
+      }
+      const bloques = [...grupos.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([k, l]) => `*${k}*\n${l.join("\n")}`);
+      texto = `Pedido La Taba · ${hoy()}\n\n${bloques.join("\n\n")}\n\nTotal: ${num(totUnidades)} unidades`;
+    } else {
+      texto = `Pedido La Taba · ${prov} · ${hoy()}\n\n${conPedido.map((r) => `• ${r.pedir} x ${r.c.name}`).join("\n")}\n\nTotal: ${num(totUnidades)} unidades`;
+    }
     try { await navigator.clipboard.writeText(texto); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }
     catch { alert(texto); }
   };
@@ -182,6 +206,7 @@ export default function Pedidos() {
                 <p className="mb-1.5 text-xs font-medium text-slate-500">Proveedor</p>
                 <select value={prov} onChange={(e) => setProv(e.target.value)}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <option value={TODOS}>Todos los proveedores</option>
                   {proveedores.map((p) => (
                     <option key={p} value={p}>{p}{leadMap.has(p) ? ` · entrega ${leadMap.get(p)} d` : " · sin tiempo de entrega"}</option>
                   ))}
@@ -222,8 +247,12 @@ export default function Pedidos() {
 
             {prov !== SIN && (
               <p className="mt-3 text-xs text-slate-500">
-                Pedido = venta diaria × ({lead} días de entrega + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.
-                El pedido debe cubrir <span className="font-semibold text-slate-700">{diasObjetivo} días</span> desde hoy.
+                {esTodos ? (
+                  <>Pedido = venta diaria × (días de entrega de su proveedor + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.</>
+                ) : (
+                  <>Pedido = venta diaria × ({lead} días de entrega + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.
+                  El pedido debe cubrir <span className="font-semibold text-slate-700">{diasObjetivo} días</span> desde hoy.</>
+                )}
               </p>
             )}
 
@@ -232,17 +261,21 @@ export default function Pedidos() {
                 <Kpi title="Productos a pedir" value={num(filas.filter((r) => r.pedir > 0).length)} />
                 <Kpi title="Unidades totales" value={num(totUnidades)} />
                 <Kpi title="Costo estimado" value={clp(totCosto)} sub={sinCosto ? `${sinCosto} SKU sin costo (stock 0)` : "según costo de inventario"} />
-                <Kpi title="Quiebran antes de llegar" value={num(enRiesgo)} sub={`stock dura menos de ${lead} días`} alert={enRiesgo > 0} />
+                <Kpi title="Quiebran antes de llegar" value={num(enRiesgo)} sub={esTodos ? "stock dura menos que la entrega" : `stock dura menos de ${lead} días`} alert={enRiesgo > 0} />
               </div>
             )}
 
             <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm sm:p-5">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <h2 className="mr-auto text-sm font-semibold text-slate-700">
-                  {prov === SIN ? "Productos que se venden y no tienen proveedor asignado" : `Pedido sugerido · ${prov}`}
+                  {prov === SIN ? "Productos que se venden y no tienen proveedor asignado" : `Pedido sugerido · ${esTodos ? "Todos los proveedores" : prov}`}
+                  <span className="ml-2 text-xs font-normal text-slate-400">{filas.length} productos</span>
                 </h2>
                 <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar producto…"
                   className="w-40 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs" />
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input type="checkbox" checked={solo7} onChange={(e) => setSolo7(e.target.checked)} /> Vendidos últimos 7 días
+                </label>
                 {prov !== SIN && (
                   <>
                     <label className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -298,6 +331,7 @@ export default function Pedidos() {
                     <thead className="sticky top-0 bg-white">
                       <tr className="text-left text-slate-500">
                         <th className="pb-2 pr-4 font-medium">Producto</th>
+                        {esTodos && <th className="pb-2 px-3 font-medium">Proveedor</th>}
                         <th className="pb-2 px-3 text-right font-medium">Stock</th>
                         <th className="pb-2 px-3 text-right font-medium">Venta/día</th>
                         <th className="pb-2 px-3 text-right font-medium">Dura hoy</th>
@@ -312,6 +346,15 @@ export default function Pedidos() {
                             {r.c.name}
                             {prodMap.has(Number(r.c.product_id)) && <span className="ml-1.5 rounded bg-indigo-50 px-1.5 text-[10px] text-indigo-600">SKU asignado</span>}
                           </td>
+                          {esTodos && (
+                            <td className="py-1.5 px-3 text-xs whitespace-nowrap">
+                              {r.p ? (
+                                <span className="text-slate-600">{r.p} <span className="text-slate-400">· {r.leadRow} d</span></span>
+                              ) : (
+                                <span className="text-amber-600">Sin proveedor</span>
+                              )}
+                            </td>
+                          )}
                           <td className={`py-1.5 px-3 text-right tabular-nums ${r.stock <= 0 ? "font-semibold text-rose-600" : ""}`}>{num(r.stock)}</td>
                           <td className="py-1.5 px-3 text-right tabular-nums">{num(r.vd, 1)}</td>
                           <td className={`py-1.5 px-3 text-right tabular-nums whitespace-nowrap ${r.quiebraAntes ? "font-semibold text-rose-600" : "text-slate-600"}`}>
@@ -328,7 +371,7 @@ export default function Pedidos() {
                             ) : r.alcanza ? (
                               <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">Cubre {num(r.cobPost, 0)} d</span>
                             ) : (
-                              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">Cubre {num(r.cobPost, 0)} de {diasObjetivo} d</span>
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">Cubre {num(r.cobPost, 0)} de {r.objRow} d</span>
                             )}
                           </td>
                         </tr>
@@ -336,7 +379,7 @@ export default function Pedidos() {
                     </tbody>
                     <tfoot className="sticky bottom-0 bg-white">
                       <tr className="border-t-2 border-slate-300 font-bold">
-                        <td className="py-2 pr-4" colSpan={4}>Total</td>
+                        <td className="py-2 pr-4" colSpan={esTodos ? 5 : 4}>Total</td>
                         <td className="py-2 px-3 text-right tabular-nums">{num(totUnidades)}</td>
                         <td className="py-2 pl-3 text-xs font-medium text-slate-500">{clp(totCosto)} aprox.</td>
                       </tr>
