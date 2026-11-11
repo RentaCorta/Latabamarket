@@ -28,7 +28,7 @@ const HORIZONTES = [5, 7, 14, 21, 30];
 // Categorías de elaboración propia que NO se piden a proveedores.
 // Se compara sin mayúsculas ni tildes y por coincidencia parcial
 // (ej. "COMPLETOS", "Sándwiches", "PROMOCIONES" o "PROMO" quedan fuera).
-const EXCLUIR_CATEGORIAS = ["churrasco", "completo", "sandwich", "promo", "goloso"];
+const EXCLUIR_CATEGORIAS = ["churrasco", "completo", "sandwich", "promo", "goloso", "la taba"];
 const normaliza = (s: string | null | undefined) =>
   (s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const excluida = (cat: string | null | undefined) => {
@@ -270,7 +270,7 @@ export default function Pedidos() {
                   <>Pedido = venta diaria × ({lead} días de entrega + {horizonte} días a cubrir) × (1 + {seg}%) − stock actual.
                   El pedido debe cubrir <span className="font-semibold text-slate-700">{diasObjetivo} días</span> desde hoy.</>
                 )}
-                {" "}No incluye Churrascos, Completos, Sándwiches, Promociones ni Gastronómica Goloso (elaboración propia).
+                {" "}No incluye Churrascos, Completos, Sándwiches, Promociones, Gastronómica Goloso ni productos La Taba (elaboración propia).
               </p>
             )}
 
